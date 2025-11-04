@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+{% block title %}Search - Troveing{% endblock %}
+{% block content %}
+<div class="search-layout">
+  <!-- Left Filters Panel -->
+  <aside class="filters-panel">
+    <div class="filters-header">
+      <h2>Filters</h2>
+      <button class="btn-clear-all" onclick="clearAllFilters()">Clear All</button>
+    </div>
+    
+    <form method="get" id="searchForm" class="filters-form">
+      <input type="hidden" name="category" value="{{ category or 'newspaper' }}">
+      
+      <!-- Year Range -->
+      <div class="filter-group">
+        <label class="filter-label">Year</label>
+        <div class="year-inputs">
+          <input type="number" name="year_from" id="year_from" value="{{ year_from or '' }}" 
+                 placeholder="From" min="1800" max="2024" class="year-input">
+          <span class="year-separator">–</span>
+          <input type="number" name="year_to" id="year_to" value="{{ year_to or '' }}" 
+                 placeholder="To" min="1800" max="2024" class="year-input">
+        </div>
+      </div>
+      
+      <!-- Place Filter -->
+      <div class="filter-group">
+        <label class="filter-label">Place</label>
+        <input type="text" name="l_place" id="l_place" value="{{ l_place or '' }}" 
+               placeholder="e.g. Sydney, NSW" class="filter-input" 
+               list="place-suggestions">
+      </div>
+      
+      <!-- Publication Filter -->
+      <div class="filter-group">
+        <label class="filter-label">Publication</label>
+        <input type="text" name="publication" id="publication" value="{{ publication or '' }}" 
+               placeholder="Newspaper name" class="filter-input">
+      </div>
+      
+      <!-- Format Filter -->
+      <div class="filter-group">
+        <label class="filter-label">Format</label>
+        <select name="l_format" id="l_format" class="filter-select">
+          <option value="">All Formats</option>
+          <option value="Article" {{ "selected" if l_format=="Article" else "" }}>Article</option>
+          <option value="Newspaper" {{ "selected" if l_format=="Newspaper" else "" }}>Newspaper</option>
+          <option value="Book" {{ "selected" if l_format=="Book" else "" }}>Book</option>
+          <option value="Image" {{ "selected" if l_format=="Image" else "" }}>Image</option>
+        </select>
+      </div>
+      
+      <!-- People/Orgs Filter -->
+      <div class="filter-group">
+        <label class="filter-label">People/Orgs</label>
+        <input type="text" name="people_orgs" id="people_orgs" value="{{ people_orgs or '' }}" 
+               placeholder="Person or organization" class="filter-input">
+      </div>
+      
+      <!-- Keywords Filter -->
+      <div class="filter-group">
+        <label class="filter-label">Keywords</label>
+        <input type="text" name="keywords" id="keywords" value="{{ keywords or '' }}" 
+               placeholder="Additional keywords" class="filter-input">
+      </div>
+      
+      <!-- Sort -->
+      <div class="filter-group">
+        <label class="filter-label">Sort By</label>
+        <select name="sortby" id="sortby" class="filter-select">
+          <option value="">Relevance</option>
+          <option value="dateAsc" {{ "selected" if sortby=="dateAsc" else "" }}>Date ↑ Oldest</option>
+          <option value="dateDesc" {{ "selected" if sortby=="dateDesc" else "" }}>Date ↓ Newest</option>
+        </select>
+      </div>
+      
+      <button type="submit" class="btn-filter-apply">Apply Filters</button>
+    </form>
+  </aside>
+  
+  <!-- Center Result Stream -->
+  <main class="results-main">
+    <div class="search-header">
+      <form method="get" class="search-form-main" onsubmit="return handleSearch(event)">
+        <input type="text" name="q" id="searchQuery" value="{{ q or '' }}" 
+               placeholder="Search Trove archives... (natural language supported)" 
+               class="search-input-main" autofocus>
+        <button type="submit" class="btn-search-main">🔍 Search</button>
+      </form>
+      {% if q %}
+      <div class="search-info">
+        <span class="result-count">{{ total }} results</span>
+        {% if items %}
+        <span class="result-range">Showing {{ s + 1 }}-{{ [s + n, total]|min }} of {{ total }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    
+    <div class="results-stream" id="resultsStream">
+      {% if items %}
+        {% for item in items %}
+        <article class="result-card" data-id="{{ item.id }}" data-title="{{ item.title }}" data-date="{{ item.date or '' }}" data-source="{{ item.source or '' }}" onclick="selectResult('{{ item.id }}')">
+          {% if item.thumbnail %}
+          <div class="result-thumbnail">
+            <img src="{{ item.thumbnail }}" alt="Thumbnail" loading="lazy">
+          </div>
+          {% endif %}
+          <div class="result-content">
+            <h3 class="result-title">{{ item.title }}</h3>
+            <div class="result-meta">
+              {% if item.date %}
+              <span class="result-date">📅 {{ item.date }}</span>
+              {% endif %}
+              {% if item.source %}
+              <span class="result-source">📰 {{ item.source }}</span>
+              {% endif %}
+            </div>
+            {% if item.snippet %}
+            <p class="result-snippet" data-read-aloud="{{ item.snippet|replace('"', '&quot;') }}">{{ item.snippet|safe }}</p>
+            {% endif %}
+            <div class="result-actions">
+              <button class="btn-action btn-pin" onclick="event.stopPropagation(); togglePin('{{ item.id }}', this)" title="Pin for citation" data-pinned="false">
+                <span class="pin-icon">📌</span>
+              </button>
+              <button class="btn-action btn-read-aloud" onclick="event.stopPropagation(); readAloudResult('{{ item.id }}')" title="Read Aloud (Space)">
+                <span class="read-icon">🔊</span>
+              </button>
+              <button class="btn-action" onclick="event.stopPropagation(); addToCollection('{{ item.id }}')" title="Add to Collection">
+                📚
+              </button>
+              <button class="btn-action" onclick="event.stopPropagation(); openReader('{{ item.id }}', '{{ item.url or '' }}', '{{ (item.snippet or '')[:500]|replace("'", "\\'")|replace('"', '&quot;') }}', '{{ (item.title or '')|replace("'", "\\'")|replace('"', '&quot;') }}', '{{ item.date or '' }}', '{{ (item.source or '')|replace("'", "\\'")|replace('"', '&quot;') }}')" title="Open Reader (r)">
+                📖
+              </button>
+              {% if item.url %}
+              <a href="{{ item.url }}" target="_blank" class="btn-action" onclick="event.stopPropagation()" title="View on Trove">
+                🔗
+              </a>
+              {% endif %}
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+        
+        {% if total > n %}
+        <div class="pagination">
+          {% if s > 0 %}
+          <a href="?{{ query_string|replace('s=' + s|string, 's=' + (s - n)|string) }}" class="btn-pagination">← Previous</a>
+          {% endif %}
+          {% if s + n < total %}
+          <a href="?{{ query_string|replace('s=' + s|string, 's=' + (s + n)|string) }}" class="btn-pagination">Next →</a>
+          {% endif %}
+        </div>
+        {% endif %}
+      {% elif q %}
+        <div class="no-results">
+          <p>No results found for "{{ q }}"</p>
+          <p class="no-results-hint">Try adjusting your filters or search terms.</p>
+        </div>
+      {% else %}
+        <div class="search-prompt">
+          <h2>Search Trove Archives</h2>
+          <p>Enter a natural language query to search across Trove and configured archives.</p>
+          <p class="search-hint">Example: "Indigenous accounts around colonisation in New South Wales, 1850–1910"</p>
+        </div>
+      {% endif %}
+    </div>
+  </main>
+  
+  <!-- Right Preview Drawer -->
+  <aside class="preview-drawer" id="previewDrawer">
+    <div class="drawer-header">
+      <h3>Preview</h3>
+      <button class="btn-drawer-close" onclick="closePreview()">×</button>
+    </div>
+    <div class="drawer-content" id="drawerContent">
+      <p class="drawer-placeholder">Select a result to preview</p>
+    </div>
+  </aside>
+</div>
+
+<script>
+let selectedResultId = null;
+
+function selectResult(id) {
+  selectedResultId = id;
+  const drawer = document.getElementById('previewDrawer');
+  const content = document.getElementById('drawerContent');
+  
+  // Show drawer
+  drawer.classList.add('open');
+  
+  // Load preview (would fetch from API in production)
+  content.innerHTML = '<p>Loading preview...</p>';
+  
+  // Fetch item details
+  fetch(`/api/item/${id}`)
+    .then(r => {
+      if (!r.ok) {
+        throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+      }
+      return r.json();
+    })
+    .then(data => {
+      // Track article for AI context
+      trackArticle(data);
+      
+      // Build detailed preview with all available metadata
+      const escapeHtml = (str) => (str || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      const safeStr = (val) => escapeHtml(val || '');
+      
+      const previewContent = `
+        <div class="preview-item" id="previewContent-${id}">
+          <h4 class="preview-title">${safeStr(data.title || 'Untitled')}</h4>
+          
+          <div class="preview-metadata">
+            ${data.date ? `<div class="meta-row"><strong>📅 Date:</strong> ${safeStr(data.date)}</div>` : ''}
+            ${data.issued ? `<div class="meta-row"><strong>📅 Issued:</strong> ${safeStr(data.issued)}</div>` : ''}
+            ${data.source ? `<div class="meta-row"><strong>📰 Source:</strong> ${safeStr(data.source)}</div>` : ''}
+            ${data.publisher_or_source ? `<div class="meta-row"><strong>🏢 Publisher:</strong> ${safeStr(data.publisher_or_source)}</div>` : ''}
+            ${data.newspaper ? `<div class="meta-row"><strong>📰 Newspaper:</strong> ${safeStr(data.newspaper)}</div>` : ''}
+            ${data.category ? `<div class="meta-row"><strong>📚 Category:</strong> ${safeStr(data.category)}</div>` : ''}
+            ${data.format ? `<div class="meta-row"><strong>📄 Format:</strong> ${safeStr(data.format)}</div>` : ''}
+            ${data.page ? `<div class="meta-row"><strong>📄 Page:</strong> ${safeStr(data.page)}</div>` : ''}
+            ${data.volume ? `<div class="meta-row"><strong>📚 Volume:</strong> ${safeStr(data.volume)}</div>` : ''}
+            ${data.place ? `<div class="meta-row"><strong>📍 Place:</strong> ${safeStr(data.place)}</div>` : ''}
+            ${data.l_place ? `<div class="meta-row"><strong>📍 Location:</strong> ${safeStr(data.l_place)}</div>` : ''}
+            ${data.contributor ? `<div class="meta-row"><strong>✍️ Contributor:</strong> ${safeStr(data.contributor)}</div>` : ''}
+            ${data.author ? `<div class="meta-row"><strong>✍️ Author:</strong> ${safeStr(data.author)}</div>` : ''}
+            ${data.creator ? `<div class="meta-row"><strong>✍️ Creator:</strong> ${safeStr(data.creator)}</div>` : ''}
+            ${data.subject ? `<div class="meta-row"><strong>🏷️ Subject:</strong> ${safeStr(data.subject)}</div>` : ''}
+            ${data.keywords ? `<div class="meta-row"><strong>🏷️ Keywords:</strong> ${safeStr(data.keywords)}</div>` : ''}
+            ${data.language ? `<div class="meta-row"><strong>🌐 Language:</strong> ${safeStr(data.language)}</div>` : ''}
+            ${data.trove_id ? `<div class="meta-row"><strong>🆔 Trove ID:</strong> <code>${safeStr(data.trove_id)}</code></div>` : ''}
+            ${data.id ? `<div class="meta-row"><strong>🆔 ID:</strong> <code>${safeStr(data.id)}</code></div>` : ''}
+            ${data.url ? `<div class="meta-row"><strong>🔗 URL:</strong> <a href="${safeStr(data.url)}" target="_blank" rel="noopener">View on Trove ↗</a></div>` : ''}
+            ${data.trove_url ? `<div class="meta-row"><strong>🔗 Trove URL:</strong> <a href="${safeStr(data.trove_url)}" target="_blank" rel="noopener">View on Trove ↗</a></div>` : ''}
+            ${data.views ? `<div class="meta-row"><strong>👁️ Views:</strong> ${data.views}</div>` : ''}
+            ${data.relevance ? `<div class="meta-row"><strong>⭐ Relevance:</strong> ${data.relevance}</div>` : ''}
+          </div>
+          
+          ${data.description ? `<div class="preview-description"><strong>Description:</strong><p>${safeStr(data.description)}</p></div>` : ''}
+          ${data.summary ? `<div class="preview-summary"><strong>Summary:</strong><p>${safeStr(data.summary)}</p></div>` : ''}
+          ${data.snippet ? `<div class="preview-snippet"><strong>Excerpt:</strong><p>${safeStr(data.snippet)}</p></div>` : ''}
+          ${data.text ? `<div class="preview-text"><strong>Full Text (preview):</strong><div class="text-preview">${safeStr(data.text.substring(0, 1000))}${data.text.length > 1000 ? '...' : ''}</div></div>` : ''}
+          
+          <div class="preview-actions">
+            <button class="btn-preview-action btn-pin" onclick="togglePin('${id}', this)" title="Pin for citation" data-pinned="false">
+              <span class="pin-icon">📌</span> Pin
+            </button>
+            <button class="btn-preview-action btn-read-aloud" onclick="readAloudPreview('${id}')" title="Read Aloud (Space)">🔊 Read Aloud</button>
+            <button class="btn-preview-action" onclick="openReader('${id}', '${safeStr(data.url || data.trove_url || '')}', '${safeStr((data.snippet || data.text || data.description || '').substring(0, 500))}', '${safeStr(data.title || '')}', '${safeStr(data.date || data.issued || '')}', '${safeStr(data.source || data.publisher_or_source || data.newspaper || '')}')">📖 Open Reader</button>
+            <button class="btn-preview-action" onclick="addToCollection('${id}')">📚 Add to Collection</button>
+            ${data.url || data.trove_url ? `<a href="${safeStr(data.url || data.trove_url)}" target="_blank" class="btn-preview-action" rel="noopener">🔗 View on Trove</a>` : ''}
+          </div>
+        </div>
+      `;
+      content.innerHTML = previewContent;
+    })
+    .catch(err => {
+      console.error('Error fetching item for preview:', err);
+      content.innerHTML = `
+        <div class="alert alert-error">
+          <p>Error loading preview: ${err.message || 'Unknown error'}</p>
+          <p><a href="/reader?id=${id}" class="btn-link">Open in Reader instead</a></p>
+        </div>
+      `;
+    });
+}
+
+function closePreview() {
+  document.getElementById('previewDrawer').classList.remove('open');
+  selectedResultId = null;
+}
+
+function handleSearch(e) {
+  // Natural language query processing could happen here
+  return true; // Allow form submission
+}
+
+function addToCollection(id) {
+  if (!id) {
+    showToast('No item ID provided', 'error');
+    return;
+  }
+  
+  fetch('/api/collections/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({item_id: id})
+  })
+  .then(r => {
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    }
+    return r.json();
+  })
+  .then(data => {
+    if (data.ok) {
+      showToast('Added to collection!', 'success');
+    } else {
+      showToast(data.error || 'Failed to add to collection', 'error');
+    }
+  })
+  .catch(err => {
+    console.error('Error adding to collection:', err);
+    showToast('Error adding to collection: ' + err.message, 'error');
+  });
+}
+
+// Track article when clicked/opened
+function trackArticle(item) {
+  if (!item || !item.id) return;
+  
+  fetch('/api/context/track', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      trove_id: item.id,
+      title: item.title || '',
+      date: item.date || '',
+      source: item.source || '',
+      url: item.url || '',
+      snippet: item.snippet || ''
+    })
+  })
+  .catch(err => {
+    console.warn('Failed to track article:', err);
+  });
+}
+
+// Toggle pin/unpin for citation
+function togglePin(troveId, button) {
+  const isPinned = button.dataset.pinned === 'true';
+  const endpoint = isPinned ? `/api/context/unpin/${troveId}` : `/api/context/pin/${troveId}`;
+  
+  fetch(endpoint, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'}
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      button.dataset.pinned = isPinned ? 'false' : 'true';
+      button.classList.toggle('pinned', !isPinned);
+      button.querySelector('.pin-icon').textContent = isPinned ? '📌' : '📌✅';
+      showToast(isPinned ? 'Unpinned' : 'Pinned for citation', 'success');
+    } else {
+      showToast('Failed to ' + (isPinned ? 'unpin' : 'pin') + ' article', 'error');
+    }
+  })
+  .catch(err => {
+    console.error('Error toggling pin:', err);
+    showToast('Error: ' + err.message, 'error');
+  });
+}
+
+function readAloudResult(itemId) {
+  const resultCard = document.querySelector(`[data-id="${itemId}"]`);
+  if (!resultCard) return;
+  
+  const title = resultCard.querySelector('.result-title')?.textContent || '';
+  const snippet = resultCard.querySelector('.result-snippet')?.textContent || '';
+  const date = resultCard.querySelector('.result-date')?.textContent || '';
+  const source = resultCard.querySelector('.result-source')?.textContent || '';
+  
+  const text = [title, date, source, snippet].filter(Boolean).join('. ');
+  
+  const button = resultCard.querySelector('.btn-read-aloud');
+  if (window.TTS) {
+    window.TTS.toggle(text, button);
+  }
+}
+
+function readAloudPreview(itemId) {
+  const previewContent = document.getElementById(`previewContent-${itemId}`);
+  if (!previewContent) return;
+  
+  // Extract all readable text, excluding action buttons and metadata labels
+  const clone = previewContent.cloneNode(true);
+  clone.querySelectorAll('.preview-actions, button, .meta-row strong, .preview-metadata strong').forEach(el => el.remove());
+  const text = clone.innerText || clone.textContent || '';
+  const button = previewContent.querySelector('.btn-read-aloud');
+  if (window.TTS && text) {
+    window.TTS.toggle(text, button);
+  }
+}
+
+function openReader(id, url = '', snippet = '', title = '', date = '', source = '') {
+  // Track article when opening reader
+  trackArticle({id, url, snippet, title, date, source});
+  
+  const params = new URLSearchParams({id: id});
+  if (url) params.set('url', url);
+  if (snippet) params.set('snippet', snippet);
+  if (title) params.set('title', title);
+  if (date) params.set('date', date);
+  if (source) params.set('source', source);
+  window.location.href = `/reader?${params.toString()}`;
+}
+
+function clearAllFilters() {
+  document.getElementById('year_from').value = '';
+  document.getElementById('year_to').value = '';
+  document.getElementById('l_place').value = '';
+  document.getElementById('publication').value = '';
+  document.getElementById('l_format').value = '';
+  document.getElementById('people_orgs').value = '';
+  document.getElementById('keywords').value = '';
+  document.getElementById('sortby').value = '';
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Space key: Toggle read aloud on selected result (if not in input field)
+  if (e.key === ' ' && !e.target.matches('input, textarea, [contenteditable]')) {
+    if (selectedResultId) {
+      e.preventDefault();
+      // Try preview drawer first, then result card
+      const previewContent = document.getElementById(`previewContent-${selectedResultId}`);
+      if (previewContent && previewContent.closest('.preview-drawer.open')) {
+        readAloudPreview(selectedResultId);
+      } else {
+        readAloudResult(selectedResultId);
+      }
+    }
+  }
+  
+  if (e.key === 'r' && selectedResultId) {
+    e.preventDefault();
+    const resultCard = document.querySelector(`[data-id="${selectedResultId}"]`);
+    if (resultCard) {
+      const item = {
+        id: selectedResultId,
+        url: resultCard.querySelector('a[href*="trove"]')?.href || '',
+        snippet: resultCard.querySelector('.result-snippet')?.textContent || '',
+        title: resultCard.querySelector('.result-title')?.textContent || '',
+        date: resultCard.querySelector('.result-date')?.textContent.replace('📅 ', '') || '',
+        source: resultCard.querySelector('.result-source')?.textContent.replace('📰 ', '') || '',
+      };
+      openReader(item.id, item.url, item.snippet, item.title, item.date, item.source);
+    }
+  }
+  if (e.key === 'c' && selectedResultId) {
+    e.preventDefault();
+    addToCollection(selectedResultId);
+  }
+  if (e.key === 'Escape') {
+    closePreview();
+    window.TTS.stop();
+  }
+});
+</script>
+{% endblock %}
+

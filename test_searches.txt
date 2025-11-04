@@ -1,0 +1,22 @@
+# Quick Test Searches - Copy these URLs into your browser
+
+# ✅ These should work (tested with 'all' category)
+http://127.0.0.1:8000/?q=australia&category=all&show_images=true
+http://127.0.0.1:8000/?q=sydney&category=all&n=20
+http://127.0.0.1:8000/?q=test&category=all
+
+# 🖼️ Image searches (with filters)
+http://127.0.0.1:8000/?q=portrait&category=image&show_images=true
+http://127.0.0.1:8000/?q=map&category=image&l_artType=Maps&show_images=true
+
+# 📚 Books/Works
+http://127.0.0.1:8000/?q=history&category=book&n=15
+
+# 📰 Newspapers (if API is working)
+http://127.0.0.1:8000/?q=ship&category=newspaper&show_images=true
+
+# 🎯 With sorting
+http://127.0.0.1:8000/?q=australia&category=all&sortby=dateDesc
+
+# 🗺️ With place filter
+http://127.0.0.1:8000/?q=landscape&category=image&l_place=Australia/New+South+Wales

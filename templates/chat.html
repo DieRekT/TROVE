@@ -1,0 +1,633 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="/static/chat.css">
+<link rel="stylesheet" href="/static/context-tray.css">
+<section class="chat-section card">
+  <div class="chat-container">
+    <div class="chat-header">
+      <h2>🕵️ Archive Detective Chat</h2>
+      <p class="chat-subtitle">Ask me to generate Trove queries, create briefs, or help with property research</p>
+    </div>
+    
+    <div class="chat-messages" id="chatMessages">
+      <div class="message bot-message">
+        <div class="message-content">
+          <p>👋 Hi! I'm your Archive Detective assistant. I can help you:</p>
+          <ul>
+            <li>🔍 <strong>Search Trove</strong> - Search archives directly (e.g., "search for gold", "find articles about Grafton")</li>
+            <li>📄 <strong>Read & Summarize Articles</strong> - Read Trove articles and create summaries</li>
+            <li>📋 <strong>Build Reports</strong> - Add articles to printable PDF reports</li>
+            <li>🔧 <strong>Generate Queries</strong> - Create Trove-ready CSV queries for property research</li>
+            <li>📝 <strong>Create Briefs</strong> - Generate PDF brief templates</li>
+            <li>📊 <strong>Timeline Management</strong> - Build owner timeline CSV files</li>
+          </ul>
+          <p><strong>Try:</strong> "search for gold locations NSW", "find articles about Grafton's first buildings", or <code>/help</code> for all commands</p>
+        </div>
+      </div>
+    </div>
+    
+    <div class="chat-input-container">
+      <!-- Context Tray -->
+      <div id="contextTrayContainer" class="context-tray-wrapper"></div>
+      
+      <form id="chatForm" class="chat-form">
+        <div class="input-wrapper">
+          <input type="text" id="chatInput" class="chat-input"
+                 placeholder="Type your message or command (e.g., /generate-queries, /context, /cite)..." autocomplete="off"/>
+          <button type="button" id="micButton" class="mic-button" title="Click to record voice">
+            <span class="mic-icon">🎤</span>
+          </button>
+        </div>
+        <button type="submit" class="btn btn-primary chat-send-btn"><span>Send</span></button>
+      </form>
+      <div class="chat-quick-actions">
+        <button class="quick-action-btn" onclick="sendQuickCommand('/generate-queries')">Generate Queries</button>
+        <button class="quick-action-btn" onclick="sendQuickCommand('/make-brief')">Make Brief</button>
+        <button class="quick-action-btn" onclick="showHelpModal()">Help</button>
+        <button class="quick-action-btn" onclick="toggleTimelineEditor()">📋 Timeline</button>
+        <a href="/status" class="quick-action-btn" style="text-decoration: none; display: inline-block;">📊 Status</a>
+      </div>
+    </div>
+    
+    <!-- Timeline CSV Editor -->
+    <div class="timeline-editor" id="timelineEditor" style="display: none;">
+      <div class="timeline-header">
+        <h3>Owner Timeline Editor</h3>
+        <div class="timeline-actions">
+          <button class="btn btn-sm btn-primary" onclick="addTimelineRow()">+ Add Row</button>
+          <button class="btn btn-sm btn-secondary" onclick="saveTimeline()">💾 Save</button>
+          <button class="btn btn-sm btn-ghost" onclick="loadTimeline()">🔄 Reload</button>
+        </div>
+      </div>
+      <div class="timeline-table-container" id="timelineTableContainer">
+        <table class="timeline-table" id="timelineTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Owner</th>
+              <th>Role</th>
+              <th>Volume/Folio</th>
+              <th>Dealing</th>
+              <th>Source</th>
+              <th>URL</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="timelineTableBody">
+            <!-- Rows will be inserted here -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Help Modal -->
+<div class="modal-overlay" id="helpModal" style="display: none;" onclick="closeHelpModal(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>📖 Command Help</h2>
+      <button class="modal-close" onclick="closeHelpModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="help-section">
+        <h3>Slash Commands</h3>
+        <div class="help-commands">
+          <div class="help-command">
+            <code>/generate-queries</code>
+            <p>Generate Trove-ready CSV queries for property research</p>
+          </div>
+          <div class="help-command">
+            <code>/make-brief</code>
+            <p>Create a PDF brief template</p>
+          </div>
+          <div class="help-command">
+            <code>/harvest-stub</code>
+            <p>Create a placeholder owner timeline CSV</p>
+          </div>
+          <div class="help-command">
+            <code>/report</code>
+            <p>Generate a placeholder research report</p>
+          </div>
+          <div class="help-command">
+            <code>/read &lt;article_id&gt;</code>
+            <p>Read a Trove article by ID or URL</p>
+          </div>
+          <div class="help-command">
+            <code>/context</code>
+            <p>Open research context tray to view/pin articles</p>
+          </div>
+          <div class="help-command">
+            <code>/cite</code>
+            <p>Cite pinned articles (auto-inserts [1][2] style references)</p>
+          </div>
+          <div class="help-command">
+            <code>/clear</code>
+            <p>Clear all articles from research context</p>
+          </div>
+          <div class="help-command">
+            <code>/cite &lt;article_id&gt;</code>
+            <p>Pin and cite an article (adds to context for AI)</p>
+          </div>
+          <div class="help-command">
+            <code>/summarize &lt;article_id&gt;</code>
+            <p>Create a summary of an article or text</p>
+          </div>
+          <div class="help-command">
+            <code>/add-to-report &lt;article_id&gt;</code>
+            <p>Add an article to your report with summary</p>
+          </div>
+          <div class="help-command">
+            <code>/report-view</code>
+            <p>View your current report</p>
+          </div>
+          <div class="help-command">
+            <code>/report-pdf</code>
+            <p>Generate a PDF of your report</p>
+          </div>
+        </div>
+      </div>
+      <div class="help-section">
+        <h3>Natural Language</h3>
+        <div class="help-commands">
+          <div class="help-command">
+            <code>"read article 12345678"</code>
+            <p>Read a Trove article</p>
+          </div>
+          <div class="help-command">
+            <code>"summarize this article"</code>
+            <p>Create a summary</p>
+          </div>
+          <div class="help-command">
+            <code>"add this to my report"</code>
+            <p>Add article to report</p>
+          </div>
+          <div class="help-command">
+            <code>"show my report"</code>
+            <p>View current report</p>
+          </div>
+          <div class="help-command">
+            <code>"generate queries for 12A Clarence St"</code>
+            <p>Generate Trove queries</p>
+          </div>
+        </div>
+      </div>
+      <div class="help-section">
+        <h3>Keyboard Shortcuts</h3>
+        <div class="help-commands">
+          <div class="help-command">
+            <code>Ctrl+Enter</code>
+            <p>Send message</p>
+          </div>
+          <div class="help-command">
+            <code>?</code>
+            <p>Open help modal</p>
+          </div>
+          <div class="help-command">
+            <code>/</code>
+            <p>Focus command input</p>
+          </div>
+        </div>
+      </div>
+      <div class="help-section">
+        <h3>Other Features</h3>
+        <ul>
+          <li><strong>Timeline Editor:</strong> Click "📋 Timeline" to edit owner timeline CSV inline</li>
+          <li><strong>Status Page:</strong> Click "📊 Status" to see all generated files</li>
+          <li><strong>ZIP Export:</strong> Export today's files or all files from the status page</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/context-tray.js"></script>
+<script>
+const M = document.getElementById('chatMessages');
+const F = document.getElementById('chatForm');
+const I = document.getElementById('chatInput');
+const micBtn = document.getElementById('micButton');
+
+// Initialize Context Tray
+let contextTray = null;
+if (window.ContextTray) {
+  const trayContainer = document.getElementById('contextTrayContainer');
+  if (trayContainer) {
+    contextTray = new window.ContextTray(trayContainer);
+    window.contextTray = contextTray; // Make globally accessible for onclick handlers
+    // Auto-fetch context on page load to show correct count
+    contextTray.fetchContext();
+  }
+}
+
+let recognition = null;
+let isRecording = false;
+
+// Initialize Web Speech API
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+  
+  recognition.onstart = () => {
+    isRecording = true;
+    micBtn.classList.add('recording');
+    micBtn.title = 'Recording... Click to stop';
+    I.placeholder = 'Listening...';
+  };
+  
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    I.value = transcript;
+    I.placeholder = 'Type your message or command (e.g., /generate-queries)...';
+    micBtn.classList.remove('recording');
+    isRecording = false;
+    micBtn.title = 'Click to record voice';
+    // Auto-submit after transcription
+    F.dispatchEvent(new Event('submit'));
+  };
+  
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error:', event.error);
+    addMessage('❌ Voice recognition error: ' + event.error, true);
+    micBtn.classList.remove('recording');
+    isRecording = false;
+    micBtn.title = 'Click to record voice';
+    I.placeholder = 'Type your message or command (e.g., /generate-queries)...';
+  };
+  
+  recognition.onend = () => {
+    if (isRecording) {
+      micBtn.classList.remove('recording');
+      isRecording = false;
+      micBtn.title = 'Click to record voice';
+      I.placeholder = 'Type your message or command (e.g., /generate-queries)...';
+    }
+  };
+  
+  micBtn.addEventListener('click', () => {
+    if (isRecording) {
+      recognition.stop();
+    } else {
+      recognition.start();
+    }
+  });
+} else {
+  // Hide mic button if not supported
+  micBtn.style.display = 'none';
+}
+
+function addMessage(text, isBot=true, citations=null) {
+  const d = document.createElement('div');
+  d.className = `message ${isBot ? 'bot-message':'user-message'}`;
+  const c = document.createElement('div');
+  c.className = 'message-content';
+  const html = String(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.*?)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
+  c.innerHTML = `<p>${html}</p>`;
+  d.appendChild(c);
+  
+  // Add citations footer if provided
+  if (isBot && citations && Array.isArray(citations) && citations.length > 0) {
+    const citationsContainer = document.createElement('div');
+    citationsContainer.id = 'citations-' + Date.now();
+    d.appendChild(citationsContainer);
+    if (window.renderCitationsFooter) {
+      window.renderCitationsFooter(citations, citationsContainer);
+    }
+  }
+  
+  // Add read aloud button for bot messages
+  if (isBot && window.TTS) {
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'message-actions';
+    actionsDiv.style.display = 'flex';
+    actionsDiv.style.justifyContent = 'flex-end';
+    actionsDiv.style.marginTop = 'var(--space-xs)';
+    
+    const readAloudBtn = window.createReadAloudButton(c, { className: 'btn-read-aloud-message' });
+    readAloudBtn.innerHTML = '<span class="read-icon">🔊</span>';
+    readAloudBtn.title = 'Read aloud (Space)';
+    readAloudBtn.style.padding = 'var(--space-xs) var(--space-sm)';
+    readAloudBtn.style.fontSize = '0.875rem';
+    
+    actionsDiv.appendChild(readAloudBtn);
+    d.appendChild(actionsDiv);
+  }
+  
+  M.appendChild(d); 
+  d.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function showTypingIndicator() {
+  const d = document.createElement('div');
+  d.className = 'message bot-message';
+  d.id = 'typing-indicator';
+  const c = document.createElement('div');
+  c.className = 'message-content typing-indicator';
+  c.innerHTML = '<span></span><span></span><span></span>';
+  d.appendChild(c);
+  M.appendChild(d);
+  d.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function hideTypingIndicator() {
+  const indicator = document.getElementById('typing-indicator');
+  if (indicator) indicator.remove();
+}
+
+async function sendMessage(msg) {
+  addMessage(msg, false); 
+  I.value='';
+  I.disabled = true;
+  showTypingIndicator();
+  
+  try {
+    // Get recent article IDs from localStorage (tracked when viewing articles)
+    const recentArticles = JSON.parse(localStorage.getItem('recentArticles') || '[]');
+    const articleIds = recentArticles.slice(0, 10).map(a => a.id).filter(Boolean);
+    
+    const r = await fetch('/api/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        message: msg,
+        article_ids: articleIds.length > 0 ? articleIds : null
+      })
+    });
+    
+    hideTypingIndicator();
+    
+    // Better error handling for non-JSON responses
+    const contentType = r.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await r.text();
+      addMessage('❌ Error: Server returned non-JSON response. ' + text.substring(0, 200), true);
+      I.disabled = false;
+      I.focus();
+      return;
+    }
+    
+    const j = await r.json();
+    const text = j.say || j.reply || j.error || 'Done!';
+    const citations = j.citations || null;
+    addMessage(text, true, citations);
+    if (j.file) {
+      const a = document.createElement('a');
+      a.href = j.file; a.className='file-link'; a.textContent = `📄 ${j.file}`;
+      a.target = '_blank';
+      M.lastElementChild.querySelector('.message-content').appendChild(a);
+    }
+  } catch (e) {
+    hideTypingIndicator();
+    // Handle JSON parse errors specifically
+    if (e instanceof SyntaxError) {
+      addMessage('❌ Error: Invalid JSON response from server. This might be a temporary issue.', true);
+    } else {
+      addMessage('❌ Error: ' + e.message, true);
+    }
+  } finally {
+    I.disabled = false;
+    I.focus();
+  }
+}
+
+function sendQuickCommand(cmd) { I.value = cmd; F.dispatchEvent(new Event('submit')); }
+
+F.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = I.value.trim();
+  if (!msg) return;
+  
+  // Handle slash commands
+  if (window.parseSlashCommand) {
+    const cmd = window.parseSlashCommand(msg);
+    
+    if (cmd.type === 'context') {
+      if (contextTray) {
+        contextTray.toggle();
+      }
+      I.value = '';
+      return;
+    }
+    
+    if (cmd.type === 'cite') {
+      // Fetch pinned articles and generate citation markers
+      try {
+        const res = await fetch('/api/context');
+        const data = await res.json();
+        if (data.ok && data.items) {
+          const pinned = data.items.filter(a => a.pinned);
+          if (pinned.length > 0) {
+            const citations = pinned.map((a, idx) => ({
+              id: a.trove_id,
+              title: a.title,
+              url: a.url,
+              date: a.date,
+              source: a.source,
+            }));
+            const markers = pinned.map((_, idx) => `[${idx + 1}]`).join('');
+            addMessage(`Citations: ${markers}`, true, citations);
+          } else {
+            addMessage('No pinned articles to cite. Use /context to pin articles first.', true);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to cite:', error);
+        addMessage('❌ Error fetching citations', true);
+      }
+      I.value = '';
+      return;
+    }
+    
+    if (cmd.type === 'clear') {
+      if (confirm('Clear all articles from context?')) {
+        try {
+          await fetch('/api/context', { method: 'DELETE' });
+          if (contextTray) {
+            contextTray.fetchContext();
+          }
+          addMessage('✅ Context cleared', true);
+        } catch (error) {
+          console.error('Failed to clear context:', error);
+          addMessage('❌ Error clearing context', true);
+        }
+      }
+      I.value = '';
+      return;
+    }
+  }
+  
+  // Send regular message
+  await sendMessage(msg);
+});
+
+// Keyboard shortcuts
+I.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 'Enter') {
+    e.preventDefault();
+    F.dispatchEvent(new Event('submit'));
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  // Space key: Toggle read aloud on last bot message (if not in input field)
+  if (e.key === ' ' && !e.target.matches('input, textarea, [contenteditable]')) {
+    const lastBotMessage = M.querySelector('.bot-message:last-child');
+    if (lastBotMessage) {
+      e.preventDefault();
+      const content = lastBotMessage.querySelector('.message-content');
+      const btn = lastBotMessage.querySelector('.btn-read-aloud-message');
+      if (content && window.TTS) {
+        window.TTS.toggle(content.innerText || content.textContent, btn);
+      }
+    }
+  }
+  
+  if (e.key === '?' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    showHelpModal();
+  }
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    I.focus();
+  }
+  if (e.key === 'Escape') {
+    if (window.TTS) window.TTS.stop();
+  }
+});
+
+// Help Modal
+function showHelpModal() {
+  document.getElementById('helpModal').style.display = 'flex';
+}
+
+function closeHelpModal(event) {
+  if (!event || event.target.id === 'helpModal' || event.target.classList.contains('modal-close')) {
+    document.getElementById('helpModal').style.display = 'none';
+  }
+}
+
+// Timeline Editor
+let timelineRows = [];
+let timelineEditorVisible = false;
+
+async function loadTimeline() {
+  try {
+    const r = await fetch('/api/timeline');
+    const j = await r.json();
+    if (j.ok) {
+      timelineRows = j.rows || [];
+      renderTimelineTable();
+    } else {
+      alert('Error loading timeline: ' + (j.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Error loading timeline: ' + e.message);
+  }
+}
+
+function renderTimelineTable() {
+  const tbody = document.getElementById('timelineTableBody');
+  tbody.innerHTML = '';
+  
+  if (timelineRows.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="9" style="text-align: center; color: var(--muted); padding: var(--space-lg);">No rows yet. Click "Add Row" to start.</td>';
+    tbody.appendChild(tr);
+    return;
+  }
+  
+  timelineRows.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" class="timeline-input" data-field="date" data-index="${idx}" value="${escapeHtml(row.date || '')}" placeholder="YYYY-MM-DD"></td>
+      <td><input type="text" class="timeline-input" data-field="owner" data-index="${idx}" value="${escapeHtml(row.owner || '')}" placeholder="Owner name"></td>
+      <td><input type="text" class="timeline-input" data-field="role" data-index="${idx}" value="${escapeHtml(row.role || '')}" placeholder="Owner, tenant, etc."></td>
+      <td><input type="text" class="timeline-input" data-field="volume_folio" data-index="${idx}" value="${escapeHtml(row.volume_folio || '')}" placeholder="Volume/Folio"></td>
+      <td><input type="text" class="timeline-input" data-field="dealing" data-index="${idx}" value="${escapeHtml(row.dealing || '')}" placeholder="Purchase, sale, etc."></td>
+      <td><input type="text" class="timeline-input" data-field="source" data-index="${idx}" value="${escapeHtml(row.source || '')}" placeholder="Source"></td>
+      <td><input type="text" class="timeline-input" data-field="url" data-index="${idx}" value="${escapeHtml(row.url || '')}" placeholder="URL"></td>
+      <td><input type="text" class="timeline-input" data-field="notes" data-index="${idx}" value="${escapeHtml(row.notes || '')}" placeholder="Notes"></td>
+      <td><button class="btn-sm btn-ghost" onclick="deleteTimelineRow(${idx})" title="Delete row">🗑️</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  
+  // Add input listeners
+  tbody.querySelectorAll('.timeline-input').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.index);
+      const field = e.target.dataset.field;
+      if (!timelineRows[idx]) timelineRows[idx] = {};
+      timelineRows[idx][field] = e.target.value;
+    });
+  });
+}
+
+function addTimelineRow() {
+  timelineRows.push({
+    date: '',
+    owner: '',
+    role: '',
+    volume_folio: '',
+    dealing: '',
+    source: '',
+    url: '',
+    notes: ''
+  });
+  renderTimelineTable();
+  // Focus the first input of the new row
+  const inputs = document.querySelectorAll('#timelineTableBody tr:last-child .timeline-input');
+  if (inputs.length > 0) inputs[0].focus();
+}
+
+function deleteTimelineRow(idx) {
+  if (confirm('Delete this row?')) {
+    timelineRows.splice(idx, 1);
+    renderTimelineTable();
+  }
+}
+
+async function saveTimeline() {
+  try {
+    const r = await fetch('/api/timeline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: timelineRows })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      addMessage('✅ Timeline saved successfully!', true);
+    } else {
+      alert('Error saving timeline: ' + (j.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Error saving timeline: ' + e.message);
+  }
+}
+
+function toggleTimelineEditor() {
+  timelineEditorVisible = !timelineEditorVisible;
+  const editor = document.getElementById('timelineEditor');
+  editor.style.display = timelineEditorVisible ? 'block' : 'none';
+  if (timelineEditorVisible && timelineRows.length === 0) {
+    loadTimeline();
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Load timeline on page load if editor is visible (won't be, but just in case)
+I.focus();
+</script>
+{% endblock %}
+

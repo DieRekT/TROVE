@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Troveing - Home Dashboard{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+  <!-- Left Navigation -->
+  <aside class="sidebar">
+    <nav class="sidebar-nav">
+      <a href="/dashboard" class="nav-item active">
+        <span class="nav-icon">🏠</span>
+        <span class="nav-label">Home</span>
+      </a>
+      <a href="/search" class="nav-item">
+        <span class="nav-icon">🔍</span>
+        <span class="nav-label">Search</span>
+      </a>
+      <a href="/reader" class="nav-item">
+        <span class="nav-icon">📖</span>
+        <span class="nav-label">Reader</span>
+      </a>
+      <a href="/desk" class="nav-item">
+        <span class="nav-icon">💬</span>
+        <span class="nav-label">Desk</span>
+      </a>
+      <a href="/collections" class="nav-item">
+        <span class="nav-icon">📚</span>
+        <span class="nav-label">Collections</span>
+      </a>
+      <a href="/studio" class="nav-item">
+        <span class="nav-icon">✍️</span>
+        <span class="nav-label">Report Studio</span>
+      </a>
+      <a href="/timeline" class="nav-item">
+        <span class="nav-icon">📅</span>
+        <span class="nav-label">Timeline</span>
+      </a>
+      <a href="/status" class="nav-item">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Status</span>
+      </a>
+      <a href="/chat" class="nav-item">
+        <span class="nav-icon">🕵️</span>
+        <span class="nav-label">Archive Detective</span>
+      </a>
+      <button class="nav-item help-btn" onclick="showHelpModal()">
+        <span class="nav-icon">❓</span>
+        <span class="nav-label">Help</span>
+      </button>
+    </nav>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="dashboard-main">
+    <!-- Summary Bar -->
+    <section class="summary-bar">
+      <div class="summary-item">
+        <span class="summary-label">Today's Runs</span>
+        <span class="summary-value" id="todayRuns">{{ today_runs or 0 }}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Queries</span>
+        <span class="summary-value" id="totalQueries">{{ total_queries or 0 }}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Docs</span>
+        <span class="summary-value" id="totalDocs">{{ total_docs or 0 }}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Outputs</span>
+        <span class="summary-value" id="totalOutputs">{{ total_outputs or 0 }}</span>
+      </div>
+      <div class="summary-item timezone">
+        <span class="summary-label">Timezone</span>
+        <span class="summary-value">Australia/Sydney</span>
+      </div>
+    </section>
+
+    <!-- New Research Button -->
+    <section class="new-research-section">
+      <a href="/search" class="btn-new-research">
+        <span class="btn-icon">➕</span>
+        <span class="btn-text">New Research</span>
+      </a>
+    </section>
+
+    <!-- Recent Activity / Quick Actions -->
+    <section class="quick-actions">
+      <h2 class="section-title">Quick Actions</h2>
+      <div class="action-grid">
+        <button class="action-card" onclick="window.location.href='/search'">
+          <span class="action-icon">🔍</span>
+          <span class="action-label">Search Archives</span>
+        </button>
+        <button class="action-card" onclick="window.location.href='/collections'">
+          <span class="action-icon">📚</span>
+          <span class="action-label">View Collections</span>
+        </button>
+        <button class="action-card" onclick="window.location.href='/studio'">
+          <span class="action-icon">✍️</span>
+          <span class="action-label">Open Studio</span>
+        </button>
+        <button class="action-card" onclick="window.location.href='/timeline'">
+          <span class="action-icon">📅</span>
+          <span class="action-label">View Timeline</span>
+        </button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Help Modal -->
+<div id="helpModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>How to Drive Troveing</h2>
+      <button class="modal-close" onclick="closeHelp()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <h3>Hotkeys</h3>
+      <ul class="hotkey-list">
+        <li><kbd>/</kbd> - Focus search</li>
+        <li><kbd>r</kbd> - Open reader</li>
+        <li><kbd>l</kbd> - Toggle listen</li>
+        <li><kbd>c</kbd> - Add to collection</li>
+        <li><kbd>s</kbd> - Send to Studio</li>
+        <li><kbd>e</kbd> - Export</li>
+        <li><kbd>?</kbd> - Show this help</li>
+      </ul>
+      <h3>Workflow</h3>
+      <ol>
+        <li>Start a <strong>New Research</strong> session</li>
+        <li>Use <strong>Search</strong> to find sources across Trove</li>
+        <li>Open items in <strong>Reader</strong> for detailed reading</li>
+        <li>Pin important articles (📌) for AI citation</li>
+        <li>Use <strong>Archive Detective</strong> (/chat) to discuss and synthesize</li>
+        <li>Organize in <strong>Collections</strong></li>
+        <li>Draft in <strong>Report Studio</strong></li>
+        <li>Export and share</li>
+      </ol>
+      <h3>Documentation</h3>
+      <ul>
+        <li><a href="/files/VISION.md" target="_blank">📖 Full Vision & Architecture Guide</a></li>
+        <li><a href="/files/QUICK_REFERENCE.md" target="_blank">⚡ Quick Reference Card</a></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+// Note: startNewResearch is now handled by direct link to /search
+// Keeping function for backwards compatibility if referenced elsewhere
+function startNewResearch() {
+  localStorage.removeItem('currentResearch');
+  window.location.href = '/search';
+}
+
+function showHelpModal() {
+  document.getElementById('helpModal').style.display = 'flex';
+}
+
+function closeHelp() {
+  document.getElementById('helpModal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+document.getElementById('helpModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'helpModal') {
+    closeHelp();
+  }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    window.location.href = '/search';
+  }
+  if (e.key === '?' && !e.shiftKey) {
+    e.preventDefault();
+    showHelpModal();
+  }
+});
+</script>
+{% endblock %}
+

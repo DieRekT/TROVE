@@ -1,0 +1,21 @@
+🌐 Public Tunnel URL (No Localhost Required)
+
+Your ngrok tunnel is active at:
+
+https://autographic-jacob-unsalably.ngrok-free.dev
+
+This URL is publicly accessible and doesn't require localhost access.
+
+To get the current tunnel URL via API (from anywhere):
+  GET https://autographic-jacob-unsalably.ngrok-free.dev/api/tunnel/public-url
+
+Or use the web app:
+  https://autographic-jacob-unsalably.ngrok-free.dev/dashboard
+
+For Google Drive uploads or file sharing:
+  - Use this URL to access files
+  - Upload files to: https://autographic-jacob-unsalably.ngrok-free.dev/files/
+  - Access outputs: https://autographic-jacob-unsalably.ngrok-free.dev/files/
+
+Note: Free ngrok tunnels expire after 2 hours. Restart with: ngrok http 8000
+

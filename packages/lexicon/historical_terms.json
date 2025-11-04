@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "name": "Aboriginal peoples (historic labels)",
+      "triggers": ["aboriginal", "indigenous", "first australians", "native"],
+      "include_terms": [
+        "Aborigine","Aborigines","native blacks","blackfellow","blackfellows",
+        "full-blood","half-caste","gin","lubra","tribal blacks","aboriginal reserve"
+      ]
+    },
+    {
+      "name": "Highly offensive slurs (historical newspapers)",
+      "triggers": ["aboriginal","indigenous","native","race","color"],
+      "include_terms": [
+        "nigger","nigger black","coon"
+      ]
+    },
+    {
+      "name": "Torres Strait Islanders (historic labels)",
+      "triggers": ["torres strait","islander"],
+      "include_terms": ["Islander","South Sea Islander","Kanaka"]
+    }
+  ]
+}
+

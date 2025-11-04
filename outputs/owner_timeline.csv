@@ -1,0 +1,7 @@
+date,owner,role,volume_folio,dealing,source,url,notes
+1901-06-12,"O'Connor, Mary — née Smith",purchaser,123/456,Transfer,Rate Book,,"Special chars: commas, apostrophe, em-dash, accents é à"
+1918-09-03,Edna Powell,occupier,,,Newspaper,,"This is a very long note with multiple paragraphs. It should handle commas, quotes ""like this"", and newlines
+
+And even multiple paragraphs.
+
+Testing that everything persists correctly."

@@ -1,0 +1,13 @@
+label,query,trove_zone,date_from,date_to,notes
+Ashby village basics,"""Ashby"" AND ""Clarence River""",newspaper,1860-01-01,1970-12-31,
+Clarence Street mentions,"""Clarence Street"" AND (Ashby OR ""Clarence River"" OR Maclean)",newspaper,1860-01-01,1970-12-31,
+Village allotments / sales,"(Ashby AND (""village allotment"" OR ""town allotment"" OR ""village of Ashby"") AND sale)",newspaper,1860-01-01,1970-12-31,
+Moongi Cottage name,"""Moongi Cottage"" OR (""Moongi"" AND Ashby)",newspaper,1860-01-01,1970-12-31,
+Parish map references,"""Parish of Ashby"" AND ""County of Clarence""",newspaper,1860-01-01,1970-12-31,
+Crown land / reserves,"(Ashby AND (""Crown land"" OR ""Crown Lands"") AND (lease OR reserve OR ""Conditional Purchase""))",newspaper,1860-01-01,1930-12-31,
+Aboriginal Reserve AR 55640,"(""Aboriginal Reserve"" OR ""A.R. 55640"" OR ""Reserve 55640"") AND (Ashby OR Maclean OR ""Clarence River"")",newspaper,1900-01-01,1960-12-31,
+Council rates / valuations,(Ashby AND (rates OR valuation) AND council),newspaper,1900-01-01,1970-12-31,
+Shipping & river traffic,"(""Clarence River"" AND Ashby AND (wharf OR jetty OR ferry OR ""river steamer""))",newspaper,1860-01-01,1950-12-31,
+Real property notices,"(Ashby AND (""for sale"" OR auction) AND (house OR cottage OR farm))",newspaper,1880-01-01,1970-12-31,
+Gazette cross-check,"(Ashby AND (""Crown Lands"" OR reserve OR ""resumed""))",gazette,1860-01-01,1970-12-31,
+People + street filter,"(Ashby AND ""Clarence Street"" AND (Mr OR Mrs OR Miss))",newspaper,1880-01-01,1970-12-31,

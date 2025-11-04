@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Archive Detective - Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .search-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .search-box input {
+            width: 70%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        .search-box button {
+            padding: 12px 24px;
+            margin-left: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .search-box button:hover {
+            background: #5568d3;
+        }
+        .sensitive-toggle {
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .results {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .result-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .result-item:hover {
+            background: #f9f9f9;
+        }
+        .result-item:last-child {
+            border-bottom: none;
+        }
+        .result-title {
+            font-weight: 600;
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .result-meta {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .result-snippet {
+            color: #555;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .api-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 Archive Detective</h1>
+        <p>Search Australian historical newspapers from Trove</p>
+    </div>
+
+    <div class="api-info">
+        <strong>API Status:</strong> <span id="api-status">Checking...</span><br>
+        <strong>API Base:</strong> <code>http://127.0.0.1:8001</code><br>
+        <a href="http://127.0.0.1:8001/docs" target="_blank">📚 API Documentation (Swagger)</a>
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="search-input" placeholder="Search Trove newspapers..." value="Australia">
+        <button onclick="search()">Search</button>
+        <div class="sensitive-toggle">
+            <input type="checkbox" id="sensitive-mode">
+            <label for="sensitive-mode">Sensitive Research Mode (includes historical terms)</label>
+        </div>
+    </div>
+
+    <div class="results" id="results">
+        <div class="loading">Enter a search term and click Search</div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://127.0.0.1:8001';
+
+        // Check API status
+        fetch(`${API_BASE}/api/ping`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('api-status').textContent = data.ok ? '✅ Online' : '❌ Error';
+            })
+            .catch(() => {
+                document.getElementById('api-status').textContent = '❌ Offline - Start API with: cd apps/api && ./run.sh';
+            });
+
+        // Load initial results
+        window.onload = () => {
+            document.getElementById('search-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') search();
+            });
+            // Auto-search on load
+            setTimeout(() => search(), 500);
+        };
+
+        async function search() {
+            const query = document.getElementById('search-input').value;
+            const sensitive = document.getElementById('sensitive-mode').checked;
+            const resultsDiv = document.getElementById('results');
+
+            if (!query.trim()) {
+                resultsDiv.innerHTML = '<div class="error">Please enter a search term</div>';
+                return;
+            }
+
+            resultsDiv.innerHTML = '<div class="loading">Searching Trove...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/trove/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q: query, n: 10, sensitive_mode: sensitive })
+                });
+
+                const data = await response.json();
+
+                if (!data.ok) {
+                    throw new Error(data.error || 'Search failed');
+                }
+
+                const items = data.items || [];
+                const queryUsed = data.query_used || query;
+
+                if (items.length === 0) {
+                    resultsDiv.innerHTML = '<div class="error">No results found. Try a different search term.</div>';
+                    return;
+                }
+
+                let html = `<div style="margin-bottom: 15px; color: #666; font-size: 14px;">
+                    <strong>Query used:</strong> <code>${queryUsed}</code> | <strong>Results:</strong> ${items.length}
+                </div>`;
+
+                items.forEach(item => {
+                    html += `
+                        <div class="result-item" onclick="window.open('${item.troveUrl || '#'}', '_blank')">
+                            <div class="result-title">${item.title || '(Untitled)'}</div>
+                            <div class="result-meta">${item.date || 'Unknown date'} · Page ${item.page || '?'}</div>
+                            ${item.snippet ? `<div class="result-snippet">${item.snippet}</div>` : ''}
+                        </div>
+                    `;
+                });
+
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error: ${error.message}<br><br>Make sure the API is running:<br><code>cd apps/api && ./run.sh</code></div>`;
+            }
+        }
+    </script>
+</body>
+</html>
+
+

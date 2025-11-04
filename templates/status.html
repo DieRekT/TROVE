@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}{{ app_title }} - Status{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/chat.css">
+<section class="status-section card">
+  <div class="status-container">
+    <div class="status-header">
+      <h2>📊 File Status</h2>
+      <p class="status-subtitle">Generated files from queries, docs, and outputs</p>
+      {% if totals %}
+      <div class="status-totals">
+        <span class="total-item">Queries: <strong>{{ totals.Queries }}</strong></span>
+        <span class="total-item">Docs: <strong>{{ totals.Docs }}</strong></span>
+        <span class="total-item">Outputs: <strong>{{ totals.Outputs }}</strong></span>
+      </div>
+      {% endif %}
+      <div class="status-actions">
+        <a href="/export/zip?scope=today" class="btn btn-primary">📦 ZIP Today</a>
+        <a href="/export/zip?scope=all" class="btn btn-secondary">📦 ZIP All</a>
+        <a href="/chat" class="btn btn-ghost">← Back to Chat</a>
+      </div>
+    </div>
+    
+    {% if rows %}
+    <div class="status-table-container">
+      <table class="status-table">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>File</th>
+            <th>Size</th>
+            <th>Modified</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td class="category-cell">
+              <span class="category-badge category-{{ row.category.lower() }}">{{ row.category }}</span>
+            </td>
+            <td class="file-cell">
+              <code>{{ row.path }}</code>
+            </td>
+            <td class="size-cell">{{ row.size_kb }} KB</td>
+            <td class="time-cell">{{ row.mtime }}</td>
+            <td class="actions-cell">
+              <a href="{{ row.link }}" target="_blank" class="btn-link">Open</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📁</div>
+      <h2>No files yet</h2>
+      <p>Generate some queries or briefs to see them here.</p>
+      <a href="/chat" class="btn btn-primary">Go to Chat</a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<style>
+.status-section {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.status-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.status-header {
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--border);
+}
+
+.status-header h2 {
+  margin: 0 0 var(--space-xs) 0;
+  color: var(--brand);
+}
+
+.status-subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 var(--space-md) 0;
+}
+
+.status-totals {
+  display: flex;
+  gap: var(--space-lg);
+  margin: var(--space-md) 0;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.total-item {
+  color: var(--fg-secondary);
+}
+
+.total-item strong {
+  color: var(--brand);
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.status-table-container {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.status-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.status-table thead {
+  background: var(--card);
+  border-bottom: 2px solid var(--border);
+}
+
+.status-table th {
+  padding: var(--space-md);
+  text-align: left;
+  font-weight: 600;
+  color: var(--fg-secondary);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-table td {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.status-table tbody tr:hover {
+  background: var(--card);
+}
+
+.status-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.category-cell {
+  width: 120px;
+}
+
+.category-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.category-badge.category-queries {
+  background: rgba(102, 85, 221, 0.2);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.category-badge.category-docs {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.category-badge.category-outputs {
+  background: rgba(244, 162, 97, 0.2);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+}
+
+.file-cell {
+  font-family: var(--font-mono);
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-cell code {
+  background: transparent;
+  padding: 0;
+  color: var(--fg);
+  font-size: 0.875rem;
+}
+
+.size-cell {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  width: 100px;
+}
+
+.time-cell {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  width: 180px;
+  font-size: 0.875rem;
+}
+
+.actions-cell {
+  width: 80px;
+}
+
+.btn-link {
+  color: var(--brand);
+  text-decoration: none;
+  font-size: 0.875rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  display: inline-block;
+}
+
+.btn-link:hover {
+  background: var(--card);
+  color: var(--brand-hover);
+}
+
+@media (max-width: 768px) {
+  .status-table {
+    font-size: 0.8rem;
+  }
+  
+  .status-table th,
+  .status-table td {
+    padding: var(--space-sm);
+  }
+  
+  .file-cell {
+    max-width: 200px;
+  }
+  
+  .status-actions {
+    flex-direction: column;
+  }
+  
+  .status-actions .btn {
+    width: 100%;
+  }
+}
+</style>
+{% endblock %}
+

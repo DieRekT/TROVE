@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+{% block title %}Reader - Troveing{% endblock %}
+{% block content %}
+<div class="reader-layout">
+  <!-- Citation Bar -->
+  <header class="citation-bar">
+    <div class="citation-info">
+      <h2 class="article-title">{{ article.title or 'Untitled' }}</h2>
+      <div class="citation-meta">
+        {% if article.date %}
+        <span class="citation-date">📅 {{ article.date }}</span>
+        {% endif %}
+        {% if article.source %}
+        <span class="citation-source">📰 {{ article.source }}</span>
+        {% endif %}
+        {% if article.page %}
+        <span class="citation-page">📄 Page {{ article.page }}</span>
+        {% endif %}
+      </div>
+      {% if article.url %}
+      <a href="{{ article.url }}" target="_blank" class="citation-link">View on Trove 🔗</a>
+      {% endif %}
+    </div>
+    <div class="citation-actions">
+      <button class="btn-citation btn-pin" id="pinBtn" onclick="togglePin()" title="Pin for citation" data-pinned="false">
+        <span class="pin-icon">📌</span> <span class="pin-text">Pin</span>
+      </button>
+      <button class="btn-citation" onclick="copyCitation()">📋 Copy Citation</button>
+      <button class="btn-citation" onclick="addToCollection()">📚 Add to Collection</button>
+    </div>
+  </header>
+
+  <!-- Main Reader Content -->
+  <main class="reader-main">
+    <!-- Left: Text Content -->
+    <section class="reader-text">
+      <div class="reader-controls">
+        <button class="btn-listen" id="listenBtn" onclick="toggleListen()">
+          <span id="listenIcon">🔊</span>
+          <span id="listenText">Listen</span>
+        </button>
+        <div class="speed-controls" id="speedControls" style="display: none;">
+          <label>Speed:</label>
+          <input type="range" id="speedSlider" min="0.5" max="2" step="0.1" value="1" 
+                 oninput="changeSpeed(this.value)">
+          <span id="speedValue">1.0x</span>
+        </div>
+        <button class="btn-control" onclick="explainSelected()">Explain</button>
+        <button class="btn-control" onclick="defineSelected()">Define</button>
+        <button class="btn-control" onclick="translateSelected()">Translate</button>
+      </div>
+      
+      <div class="text-content" id="textContent">
+        {{ article.text|safe if article.text else article.snippet|safe if article.snippet else 'No content available.' }}
+      </div>
+      
+      <!-- Inline Explanations -->
+      <div id="inlineExplanations" class="inline-explanations"></div>
+    </section>
+
+    <!-- Right: Original Scan -->
+    <aside class="reader-scan">
+      {% if article.image_url or article.url %}
+      <div class="scan-container">
+        {% if article.image_url %}
+        <img src="{{ article.image_url }}" alt="Original scan" id="scanImage" class="scan-image" 
+             onerror="tryNextImageUrl(this, '{{ article.url }}');">
+        {% elif article.url %}
+        <!-- Try multiple image URL formats with fallback -->
+        <img src="{{ article.url }}/image?hei=700" alt="Article scan" id="scanImage" class="scan-image" 
+             onerror="tryNextImageUrl(this, '{{ article.url }}');">
+        {% endif %}
+        <div class="scan-placeholder" id="scanPlaceholder" style="display: none;">
+          <p>📄 Scan not available</p>
+          {% if article.url %}
+          <p><a href="{{ article.url }}" target="_blank" class="citation-link">View on Trove</a></p>
+          {% endif %}
+        </div>
+        <div class="scan-controls">
+          <button class="btn-scan" onclick="zoomIn()">🔍+</button>
+          <button class="btn-scan" onclick="zoomOut()">🔍-</button>
+          <button class="btn-scan" onclick="resetZoom()">Reset</button>
+          {% if article.url %}
+          <a href="{{ article.url }}" target="_blank" class="btn-scan">🔗 View on Trove</a>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="scan-placeholder">
+        <p>📄 No scan available</p>
+        {% if article.url %}
+        <p><a href="{{ article.url }}" target="_blank" class="citation-link">View on Trove</a></p>
+        {% endif %}
+      </div>
+      {% endif %}
+    </aside>
+  </main>
+
+  <!-- Discuss Button - Opens Research Desk -->
+  <div class="reader-footer">
+    <button class="btn-discuss" onclick="openDesk()">
+      💬 Discuss
+    </button>
+  </div>
+</div>
+
+<script>
+// Track article when reader loads (to SQLite context store)
+document.addEventListener('DOMContentLoaded', () => {
+  const articleId = new URLSearchParams(window.location.search).get('id');
+  if (!articleId) return;
+  
+  const article = {
+    id: articleId,
+    title: document.querySelector('.article-title')?.textContent || '',
+    date: document.querySelector('.citation-date')?.textContent?.replace('📅 ', '') || '',
+    source: document.querySelector('.citation-source')?.textContent?.replace('📰 ', '') || '',
+    snippet: document.querySelector('.text-content')?.textContent?.substring(0, 500) || '',
+    url: document.querySelector('.citation-link')?.href || ''
+  };
+  
+  // Track to SQLite context store
+  if (article.id) {
+    fetch('/api/context/track', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        trove_id: article.id,
+        title: article.title,
+        date: article.date,
+        source: article.source,
+        url: article.url,
+        snippet: article.snippet
+      })
+    }).catch(err => console.warn('Failed to track article to context:', err));
+    
+    // Also track to localStorage (for backward compatibility)
+    if (window.trackArticle) {
+      window.trackArticle(article);
+    }
+  }
+});
+
+let selectedText = '';
+
+// Image URL fallback strategy - try multiple Trove image URL formats
+function tryNextImageUrl(img, baseUrl) {
+  if (!baseUrl) {
+    showPlaceholder(img);
+    return;
+  }
+  
+  const urlPatterns = [];
+  
+  // Extract article ID if possible
+  const articleIdMatch = baseUrl.match(/article\/(\d+)/) || baseUrl.match(/nla\.news-article(\d+)/);
+  const articleId = articleIdMatch ? articleIdMatch[1] : null;
+  
+  if (articleId) {
+    // Newspaper article patterns
+    urlPatterns.push(
+      `https://trove.nla.gov.au/newspaper/article/${articleId}/image?hei=1200`,
+      `https://trove.nla.gov.au/newspaper/article/${articleId}/image?hei=700`,
+      `https://trove.nla.gov.au/newspaper/article/${articleId}/image`,
+      `${baseUrl}/image?hei=1200`,
+      `${baseUrl}/image?hei=700`,
+      `${baseUrl}/image`
+    );
+  } else {
+    // Generic patterns
+    urlPatterns.push(
+      `${baseUrl}/image?hei=1200`,
+      `${baseUrl}/image?hei=700`,
+      `${baseUrl}/image`,
+      `${baseUrl}?image=true`
+    );
+  }
+  
+  // Track which URL we're trying
+  let currentIndex = parseInt(img.dataset.urlIndex || '0');
+  
+  if (currentIndex < urlPatterns.length) {
+    const nextUrl = urlPatterns[currentIndex];
+    img.dataset.urlIndex = (currentIndex + 1).toString();
+    img.src = nextUrl;
+  } else {
+    // All URLs tried, show placeholder
+    showPlaceholder(img);
+  }
+}
+
+function showPlaceholder(img) {
+  img.style.display = 'none';
+  const placeholder = document.getElementById('scanPlaceholder');
+  if (placeholder) {
+    placeholder.style.display = 'block';
+  }
+}
+
+// Listen functionality - use global TTS system
+function toggleListen() {
+  const btn = document.getElementById('listenBtn');
+  const icon = document.getElementById('listenIcon');
+  const text = document.getElementById('listenText');
+  const speedControls = document.getElementById('speedControls');
+  const content = document.getElementById('textContent');
+  
+  if (!window.TTS || !window.TTS.synth) {
+    showToast('Speech synthesis not supported in your browser.', 'error');
+    return;
+  }
+  
+  const contentText = content.innerText || content.textContent || '';
+  
+  if (window.TTS.isSpeaking) {
+    window.TTS.stop();
+    icon.textContent = '🔊';
+    text.textContent = 'Listen';
+    speedControls.style.display = 'none';
+  } else {
+    const rate = parseFloat(document.getElementById('speedSlider').value);
+    window.TTS.setRate(rate);
+    
+    if (window.TTS.speak(contentText)) {
+      icon.textContent = '⏸️';
+      text.textContent = 'Pause';
+      speedControls.style.display = 'flex';
+      
+      // Update when speech ends
+      const originalOnEnd = window.TTS.currentUtterance.onend;
+      window.TTS.currentUtterance.onend = () => {
+        if (originalOnEnd) originalOnEnd();
+        icon.textContent = '🔊';
+        text.textContent = 'Listen';
+        speedControls.style.display = 'none';
+      };
+    }
+  }
+}
+
+function changeSpeed(value) {
+  document.getElementById('speedValue').textContent = value + 'x';
+  if (window.TTS && window.TTS.currentUtterance) {
+    window.TTS.setRate(parseFloat(value));
+  }
+}
+
+// Text selection handlers
+document.addEventListener('mouseup', () => {
+  selectedText = window.getSelection().toString().trim();
+});
+
+function explainSelected() {
+  if (!selectedText) {
+    alert('Please select text to explain.');
+    return;
+  }
+  
+  fetch('/api/explain', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: selectedText})
+  })
+  .then(r => r.json())
+  .then(data => {
+    showInlineExplanation(selectedText, data.explanation, 'explain');
+  })
+  .catch(err => console.error(err));
+}
+
+function defineSelected() {
+  if (!selectedText) {
+    alert('Please select text to define.');
+    return;
+  }
+  
+  fetch('/api/define', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: selectedText})
+  })
+  .then(r => r.json())
+  .then(data => {
+    showInlineExplanation(selectedText, data.definition, 'define');
+  })
+  .catch(err => console.error(err));
+}
+
+function translateSelected() {
+  if (!selectedText) {
+    alert('Please select text to translate.');
+    return;
+  }
+  
+  fetch('/api/translate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: selectedText})
+  })
+  .then(r => r.json())
+  .then(data => {
+    showInlineExplanation(selectedText, data.translation, 'translate');
+  })
+  .catch(err => console.error(err));
+}
+
+function showInlineExplanation(originalText, explanation, type) {
+  const container = document.getElementById('inlineExplanations');
+  const explanationEl = document.createElement('div');
+  explanationEl.className = `inline-explanation ${type}`;
+  explanationEl.innerHTML = `
+    <div class="explanation-header">
+      <strong>${type === 'explain' ? 'Explanation' : type === 'define' ? 'Definition' : 'Translation'}</strong>
+      <button onclick="this.parentElement.parentElement.remove()">×</button>
+    </div>
+    <div class="explanation-content">
+      <p><strong>Original:</strong> "${originalText}"</p>
+      <p>${explanation}</p>
+      <button class="btn-add-note" onclick="addToNotes('${originalText.replace(/'/g, "\\'")}', '${explanation.replace(/'/g, "\\'")}')">Add to Notes</button>
+    </div>
+  `;
+  container.appendChild(explanationEl);
+}
+
+function addToNotes(original, explanation) {
+  // Add to notes/collection
+  fetch('/api/notes/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({original, explanation})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      alert('Added to notes!');
+    }
+  });
+}
+
+function copyCitation() {
+  const titleEl = document.querySelector('.article-title');
+  const dateEl = document.querySelector('.citation-date');
+  const sourceEl = document.querySelector('.citation-source');
+  const urlEl = document.querySelector('.citation-link');
+  
+  if (!titleEl) {
+    showToast('Could not find article title', 'error');
+    return;
+  }
+  
+  const title = titleEl.textContent || '';
+  const date = dateEl ? dateEl.textContent.replace('📅 ', '') : '';
+  const source = sourceEl ? sourceEl.textContent.replace('📰 ', '') : '';
+  const url = urlEl ? urlEl.href : '';
+  
+  const citation = `"${title}"${date ? ` (${date})` : ''}${source ? `. ${source}` : ''}${url ? `. ${url}` : ''}`;
+  
+  navigator.clipboard.writeText(citation).then(() => {
+    showToast('Citation copied to clipboard!', 'success');
+  }).catch(err => {
+    console.error('Failed to copy citation:', err);
+    showToast('Failed to copy citation', 'error');
+  });
+}
+
+function addToCollection() {
+  const articleId = new URLSearchParams(window.location.search).get('id');
+  if (!articleId) {
+    showToast('No article ID found', 'error');
+    return;
+  }
+  
+  fetch('/api/collections/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({item_id: articleId})
+  })
+  .then(r => {
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    }
+    return r.json();
+  })
+  .then(data => {
+    if (data.ok) {
+      showToast('Added to collection!', 'success');
+    } else {
+      showToast(data.error || 'Failed to add to collection', 'error');
+    }
+  })
+  .catch(err => {
+    console.error('Error adding to collection:', err);
+    showToast('Error adding to collection: ' + err.message, 'error');
+  });
+}
+
+function togglePin() {
+  const articleId = new URLSearchParams(window.location.search).get('id');
+  if (!articleId) {
+    showToast('No article ID found', 'error');
+    return;
+  }
+  
+  const btn = document.getElementById('pinBtn');
+  const isPinned = btn.dataset.pinned === 'true';
+  const endpoint = isPinned ? `/api/context/unpin/${articleId}` : `/api/context/pin/${articleId}`;
+  
+  fetch(endpoint, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'}
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      btn.dataset.pinned = isPinned ? 'false' : 'true';
+      btn.classList.toggle('pinned', !isPinned);
+      const icon = btn.querySelector('.pin-icon');
+      const text = btn.querySelector('.pin-text');
+      if (icon) icon.textContent = isPinned ? '📌' : '📌✅';
+      if (text) text.textContent = isPinned ? 'Pin' : 'Pinned';
+      showToast(isPinned ? 'Unpinned' : 'Pinned for citation', 'success');
+    } else {
+      showToast('Failed to ' + (isPinned ? 'unpin' : 'pin') + ' article', 'error');
+    }
+  })
+  .catch(err => {
+    console.error('Error toggling pin:', err);
+    showToast('Error: ' + err.message, 'error');
+  });
+}
+
+function openDesk() {
+  const articleId = new URLSearchParams(window.location.search).get('id');
+  window.location.href = `/desk?context=${articleId}`;
+}
+
+// Scan zoom controls
+let zoomLevel = 1;
+function zoomIn() {
+  zoomLevel = Math.min(zoomLevel + 0.2, 3);
+  document.getElementById('scanImage').style.transform = `scale(${zoomLevel})`;
+}
+
+function zoomOut() {
+  zoomLevel = Math.max(zoomLevel - 0.2, 0.5);
+  document.getElementById('scanImage').style.transform = `scale(${zoomLevel})`;
+}
+
+function resetZoom() {
+  zoomLevel = 1;
+  document.getElementById('scanImage').style.transform = 'scale(1)';
+}
+
+function fullscreenScan() {
+  const img = document.getElementById('scanImage');
+  if (img.requestFullscreen) {
+    img.requestFullscreen();
+  }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'l' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    toggleListen();
+  }
+  if (e.key === 'd' && e.ctrlKey) {
+    e.preventDefault();
+    openDesk();
+  }
+});
+</script>
+{% endblock %}
+
