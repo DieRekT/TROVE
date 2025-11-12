@@ -20,65 +20,66 @@ class TroveClient:
         q: str,
         n: int = 20,
         category: str = "newspaper",
-        reclevel: str = "brief",  # Changed from "full" to avoid 400 errors
-        include: str = "",  # Simplified - can add back if needed
+        reclevel: str = "full",
+        include: str = "articleText,links",
         year_from: Optional[int] = None,
         year_to: Optional[int] = None,
-        offset: Optional[int] = None,
         state: Optional[str] = None,
+        offset: Optional[int | str] = None,
     ) -> Dict[str, Any]:
         """Search Trove with optional state filtering."""
         params = {
             "q": q,
             "n": n,
             "category": category,
+            "reclevel": reclevel,
             "encoding": "json",
+            "include": include,
         }
-        # Only add optional parameters if they have values
-        if reclevel:
-            params["reclevel"] = reclevel
-        if include:
-            params["include"] = include
-        # Trove API v3 uses token-based pagination (nextStart token), not numeric offsets
-        # If offset is a string, it's a token; if it's a number > 0, we'll try it (legacy support)
+        # Trove API v3 uses token-based pagination (s parameter can be token or int)
         if offset is not None:
-            if isinstance(offset, str):
-                params["s"] = offset  # Token-based pagination
-            elif offset > 0:
-                params["s"] = int(offset)  # Legacy numeric offset (may not work)
-        # Trove API v3 uses l-decade format (e.g., "190" for 1900s, "191" for 1910s)
-        # If year range spans multiple decades, we can't filter precisely
-        # For now, use decade filter if range fits in one decade, otherwise skip year filter
+            params["s"] = offset
+        # Trove API v3 uses l-year format: "1945-1980", "1945-", or "-1980"
         if year_from and year_to:
-            # Calculate decades
-            decade_from = year_from // 10
-            decade_to = year_to // 10
-            # If range fits in one decade, use it
-            if decade_from == decade_to:
-                params["l-decade"] = str(decade_from)
-            # Otherwise, try to use the starting decade (better than nothing)
-            elif decade_to - decade_from <= 2:
-                # Use the middle decade if range is small
-                mid_decade = (decade_from + decade_to) // 2
-                params["l-decade"] = str(mid_decade)
-            # For larger ranges, skip year filter (too imprecise with decade format)
+            params["l-year"] = f"{year_from}-{year_to}"
         elif year_from:
-            params["l-decade"] = str(year_from // 10)
+            params["l-year"] = f"{year_from}-"
         elif year_to:
-            params["l-decade"] = str(year_to // 10)
-        # Try state filter - Trove API v3 may support it
+            params["l-year"] = f"-{year_to}"
+        # State filter - Trove API v3 may not support l-state parameter
+        # Try to use it, but don't fail if it's not supported
+        # Note: State filtering may need to be done post-fetch
         if state:
-            # Try the state filter, but don't fail if it's not supported
-            try:
-                params["l-state"] = state  # "New South Wales" or "Western Australia"
-            except Exception:
-                pass  # If state filtering causes issues, continue without it
+            state_map = {
+                "NSW": "New South Wales",
+                "WA": "Western Australia",
+                "VIC": "Victoria",
+                "QLD": "Queensland",
+                "SA": "South Australia",
+                "TAS": "Tasmania",
+                "NT": "Northern Territory",
+                "ACT": "Australian Capital Territory",
+            }
+            full_state = state_map.get(state.upper(), state)
+            # Try adding state filter, but API may not support it
+            # If API returns 400, we'll handle it in the calling code
+            params["l-state"] = full_state
 
         headers = {"X-API-KEY": self.api_key}
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
-            r = await client.get(TROVE_API, params=params)
-            r.raise_for_status()
-            return r.json()
+            try:
+                r = await client.get(TROVE_API, params=params)
+                r.raise_for_status()
+                return r.json()
+            except httpx.HTTPStatusError as e:
+                # If 400 error and state parameter was used, try without it
+                if e.response.status_code == 400 and state and "l-state" in params:
+                    # Retry without state filter
+                    params_no_state = {k: v for k, v in params.items() if k != "l-state"}
+                    r = await client.get(TROVE_API, params=params_no_state)
+                    r.raise_for_status()
+                    return r.json()
+                raise
 
     @staticmethod
     def extract_hits(payload: Dict[str, Any]) -> List[Dict[str, Any]]:

@@ -141,11 +141,15 @@ def job_report(job_id: str, max_sources: int = 20):
         # Get BM25 ranks for normalization (lower is better in FTS5)
         ranks = [float(r["rank"]) for r in rows] if rows else []
         
+        # Normalize BM25 scores using min-max normalization across all results
+        from ..services.ranking import normalize_bm25_scores
+        normalized_bm25 = normalize_bm25_scores(ranks) if ranks else []
+        
         sources = []
         # Use state from job if available, otherwise infer from query
         # job is a sqlite3.Row, access with [] not .get()
         requested_state = (job["state"] if job["state"] else None) or infer_state(q)
-        for r in rows:
+        for idx, r in enumerate(rows):
             raw = None
             try:
                 raw_text = r.get("raw")
@@ -172,14 +176,14 @@ def job_report(job_id: str, max_sources: int = 20):
             text_for_quotes = r["text"] or ""
             quotes = best_sentences(text_for_quotes, terms, k=2) if text_for_quotes else []
             
-            # Calculate blended relevance score
-            bm25_raw = float(r["rank"]) if ranks else 1.0
-            bm25 = bm25_to_score(bm25_raw)
+            # Calculate blended relevance score using normalized BM25
+            bm25_raw = float(r["rank"]) if idx < len(ranks) else 0.0
+            bm25_normalized = normalized_bm25[idx] if idx < len(normalized_bm25) else 0.0
             tb = title_overlap(r["title"] or "", terms)
             dp = date_proximity(r["year"], job.get("years_from"), job.get("years_to"))
             text_for_bonus = " ".join([r["title"] or "", text_for_quotes])
             nswb = nsw_bonus_for_text(text_for_bonus)
-            rel = blend(bm25, tb, dp, nswb)
+            rel = blend(bm25_normalized, tb, dp, nswb)
             
             sources.append({
                 "id": r["id"],

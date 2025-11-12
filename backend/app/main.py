@@ -12,7 +12,7 @@ from .deps import get_cache, get_http_client
 from .models import NormalizedItem, SearchResponse
 from .schemas import ReadyResponse
 from .utils.csv_export import items_to_csv_bytes
-from .routers import deep_research, formatting, dashboard, batch_research, search_reader, reader_text, summarize, tunnel, qrcode, context, pages, items, text_tools, mobile_api, structured_synthesis, research, entities, timeline, analysis
+from .routers import deep_research, formatting, dashboard, batch_research, search_reader, reader_text, summarize, tunnel, qrcode, context, pages, items, text_tools, mobile_api, structured_synthesis, research, entities, timeline, analysis, seeds
 
 app = FastAPI(title="Archive Detective API", version="0.1.0")
 
@@ -31,7 +31,7 @@ async def ready(cache=Depends(get_cache)):
     return ReadyResponse(ok=True, cache=cache.backend_name())
 
 
-@app.get("/search", response_model=SearchResponse)
+@app.get("/api/search", response_model=SearchResponse)
 async def search(
     q: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
@@ -39,6 +39,7 @@ async def search(
     client=Depends(get_http_client),
     cache=Depends(get_cache),
 ):
+    """JSON API endpoint for search (moved to /api/search to avoid conflict with HTML page)."""
     cache_key = f"trove:{q}:{page}:{page_size}"
     cached = await cache.get(cache_key)
     if cached:
@@ -89,11 +90,11 @@ async def export(
     )
 
 
+app.include_router(search_reader.router)  # Include search_reader router FIRST so /search HTML page takes precedence
 app.include_router(deep_research.router)
 app.include_router(formatting.router)
 app.include_router(dashboard.router)
 app.include_router(batch_research.router)
-app.include_router(search_reader.router)
 app.include_router(reader_text.router)
 app.include_router(summarize.router)
 app.include_router(tunnel.router)
@@ -108,6 +109,7 @@ app.include_router(research.router)
 app.include_router(entities.router)
 app.include_router(timeline.router)
 app.include_router(analysis.router)
+app.include_router(seeds.router)
 
 # Mount static files
 static_dir = Path(__file__).parent / "static"
@@ -121,6 +123,16 @@ async def tts_stream():
     return JSONResponse(
         status_code=501,
         content={"error": "TTS service not implemented", "detail": "Text-to-speech is not available. Use browser SpeechSynthesis API as fallback."}
+    )
+
+
+@app.get("/api/tts/health")
+async def tts_health():
+    """Check TTS service availability."""
+    # TTS is not implemented, return unavailable
+    return JSONResponse(
+        status_code=503,
+        content={"available": False, "message": "TTS service not implemented. Use browser SpeechSynthesis API."}
     )
 
 
