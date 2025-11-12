@@ -58,3 +58,9 @@ async def notebook_page(request: Request):
     """Research notebook page with entity extraction and timelines."""
     return templates.TemplateResponse("notebook.html", {"request": request})
 
+
+@router.get("/report", response_class=HTMLResponse)
+async def report_page(request: Request):
+    """Deep Research Report Generator page."""
+    return templates.TemplateResponse("report.html", {"request": request})
+

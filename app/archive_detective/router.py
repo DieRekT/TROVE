@@ -665,6 +665,131 @@ Available commands:
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Analysis query detection failed: {analysis_error}")
+                # Fall through to deep research or LLM routing
+            
+            # Check for deep research queries: "research X", "deep research X", "generate report on X"
+            try:
+                msg_lower = msg.lower()
+                
+                # Pattern: "research X", "deep research X", "generate report on X", "create report about X"
+                research_patterns = [
+                    "research ",
+                    "deep research ",
+                    "generate report on ",
+                    "create report about ",
+                    "generate report about ",
+                    "create report on ",
+                ]
+                
+                is_research_query = False
+                research_query = None
+                years_from = None
+                years_to = None
+                
+                for pattern in research_patterns:
+                    if pattern in msg_lower:
+                        is_research_query = True
+                        research_query = msg_lower.split(pattern, 1)[1].strip()
+                        # Remove trailing punctuation
+                        research_query = research_query.rstrip(".,!?")
+                        break
+                
+                # Look for year range in query
+                if is_research_query:
+                    import re
+                    # Pattern: "between 1940-1950" or "from 1940 to 1950" or "1940-1950"
+                    range_match = re.search(r'(\d{4})\s*[-–]\s*(\d{4})', msg_lower)
+                    if range_match:
+                        years_from = int(range_match.group(1))
+                        years_to = int(range_match.group(2))
+                    else:
+                        # Pattern: "from 1940 to 1950"
+                        from_match = re.search(r'from\s+(\d{4})\s+to\s+(\d{4})', msg_lower)
+                        if from_match:
+                            years_from = int(from_match.group(1))
+                            years_to = int(from_match.group(2))
+                        else:
+                            # Pattern: "between 1940 and 1950"
+                            between_match = re.search(r'between\s+(\d{4})\s+and\s+(\d{4})', msg_lower)
+                            if between_match:
+                                years_from = int(between_match.group(1))
+                                years_to = int(between_match.group(2))
+                    
+                    # Look for region/state
+                    region = None
+                    if "nsw" in msg_lower or "new south wales" in msg_lower:
+                        region = "NSW"
+                    elif "wa" in msg_lower or "western australia" in msg_lower:
+                        region = "WA"
+                    
+                    if research_query:
+                        # Call deep research endpoint
+                        # Try to import from backend app (if available)
+                        try:
+                            from backend.app.models.deep_research import DeepResearchRequest
+                            from backend.app.services.deep_research import run_deep_research
+                        except ImportError:
+                            # Fallback: try importing from app directory
+                            try:
+                                import sys
+                                from pathlib import Path
+                                backend_path = Path(__file__).parent.parent.parent / "backend"
+                                if str(backend_path) not in sys.path:
+                                    sys.path.insert(0, str(backend_path))
+                                from app.models.deep_research import DeepResearchRequest
+                                from app.services.deep_research import run_deep_research
+                            except ImportError:
+                                # Deep research not available
+                                return _ok(f"Deep research feature is not available. Try: /search {research_query}")
+                        
+                        research_req = DeepResearchRequest(
+                            query=research_query,
+                            region=region,
+                            years_from=years_from,
+                            years_to=years_to,
+                            max_sources=12,
+                            depth="standard"
+                        )
+                        
+                        try:
+                            result = await run_deep_research(research_req)
+                            
+                            # Format response
+                            reply = f"📊 **Deep Research Report: {research_query}**\n\n"
+                            reply += f"**Executive Summary:**\n{result.executive_summary}\n\n"
+                            
+                            if result.key_findings:
+                                reply += f"**Key Findings ({len(result.key_findings)}):**\n"
+                                for idx, finding in enumerate(result.key_findings[:3], 1):
+                                    reply += f"{idx}. {finding.title}: {finding.insight}\n"
+                            
+                            if result.timeline:
+                                reply += f"\n**Timeline:** {len(result.timeline)} events\n"
+                            
+                            if result.sources:
+                                reply += f"\n**Sources:** {len(result.sources)} articles\n"
+                            
+                            return JSONResponse({
+                                "ok": True,
+                                "reply": reply,
+                                "report": {
+                                    "query": result.query,
+                                    "executive_summary": result.executive_summary,
+                                    "key_findings": [f.model_dump() for f in result.key_findings],
+                                    "timeline": [t.model_dump() for t in result.timeline],
+                                    "sources": [s.model_dump() for s in result.sources],
+                                    "stats": result.stats
+                                }
+                            })
+                        except Exception as research_error:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Deep research failed: {research_error}")
+                            return _ok(f"Research query detected but failed: {str(research_error)}\n\nTry: /search {research_query}")
+            except Exception as research_detection_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Research query detection failed: {research_detection_error}")
                 # Fall through to LLM routing
             
             # Non-slash command - handle with LLM routing

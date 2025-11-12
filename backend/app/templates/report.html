@@ -1,0 +1,819 @@
+{% extends "base.html" %}
+{% block title %}Deep Research Report - Troveing{% endblock %}
+{% block page_title %}Deep Research Report{% endblock %}
+{% block content %}
+<div class="report-container">
+  <!-- Report Generator Form (if no job_id or report data) -->
+  <div class="report-form-section" id="formSection">
+    <h2>Generate Deep Research Report</h2>
+    <form id="reportForm" class="report-form">
+      <div class="form-group">
+        <label for="query">Research Query *</label>
+        <textarea id="query" name="query" rows="3" required 
+                  placeholder="e.g., History of phosphate mining approvals in NSW's North Coast (1970–1995)"></textarea>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="years_from">Year From (optional)</label>
+          <input type="number" id="years_from" name="years_from" 
+                 placeholder="e.g., 1970" min="1800" max="2024">
+        </div>
+        
+        <div class="form-group">
+          <label for="years_to">Year To (optional)</label>
+          <input type="number" id="years_to" name="years_to" 
+                 placeholder="e.g., 1995" min="1800" max="2024">
+        </div>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="region">Region (optional)</label>
+          <input type="text" id="region" name="region" 
+                 placeholder="e.g., Clarence Valley, NSW">
+        </div>
+        
+        <div class="form-group">
+          <label for="max_sources">Max Sources</label>
+          <input type="number" id="max_sources" name="max_sources" value="12" min="1" max="100">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="depth">Research Depth</label>
+        <div class="radio-group">
+          <label><input type="radio" name="depth" value="brief" id="depth-brief"> Brief</label>
+          <label><input type="radio" name="depth" value="standard" id="depth-standard" checked> Standard</label>
+          <label><input type="radio" name="depth" value="deep" id="depth-deep"> Deep</label>
+        </div>
+      </div>
+      
+      <button type="submit" class="btn-primary" id="generateBtn">Generate Report</button>
+    </form>
+  </div>
+  
+  <!-- Loading State -->
+  <div class="report-loading-section" id="loadingSection" style="display: none;">
+    <div class="loading-spinner"></div>
+    <p>Generating report...</p>
+  </div>
+  
+  <!-- Report Display -->
+  <div class="report-display-section" id="reportSection" style="display: none;">
+    <div class="report-header">
+      <div class="report-title-section">
+        <h2 id="reportTitle">Deep Research Report</h2>
+        <p class="report-meta" id="reportMeta"></p>
+      </div>
+      <div class="report-actions">
+        <a href="#" id="downloadMd" class="btn-secondary" download>
+          <span>📄</span> Download Markdown
+        </a>
+        <a href="#" id="downloadJsonl" class="btn-secondary" download>
+          <span>📦</span> Download Evidence (JSONL)
+        </a>
+        <button id="newReportBtn" class="btn-secondary" onclick="location.reload()">
+          <span>🔄</span> New Report
+        </button>
+      </div>
+    </div>
+    
+    <div class="report-content" id="reportContent">
+      <!-- Executive Summary -->
+      <section class="report-section">
+        <h3>Executive Summary</h3>
+        <div id="executiveSummary" class="report-text"></div>
+      </section>
+      
+      <!-- Key Findings -->
+      <section class="report-section" id="findingsSection">
+        <h3>Key Findings</h3>
+        <div id="keyFindings" class="findings-list"></div>
+      </section>
+      
+      <!-- Timeline -->
+      <section class="report-section" id="timelineSection">
+        <h3>Timeline</h3>
+        <div id="timeline" class="timeline-list"></div>
+      </section>
+      
+      <!-- Sources -->
+      <section class="report-section" id="sourcesSection">
+        <h3>Sources</h3>
+        <div id="sources" class="sources-list"></div>
+      </section>
+      
+      <!-- Methodology -->
+      <section class="report-section" id="methodologySection">
+        <h3>Methodology</h3>
+        <div id="methodology" class="methodology-list"></div>
+      </section>
+      
+      <!-- Limitations -->
+      <section class="report-section" id="limitationsSection">
+        <h3>Limitations</h3>
+        <div id="limitations" class="limitations-list"></div>
+      </section>
+      
+      <!-- Next Questions -->
+      <section class="report-section" id="nextQuestionsSection">
+        <h3>Next Questions</h3>
+        <div id="nextQuestions" class="questions-list"></div>
+      </section>
+      
+      <!-- Statistics -->
+      <section class="report-section" id="statsSection">
+        <h3>Statistics</h3>
+        <div id="stats" class="stats-list"></div>
+      </section>
+    </div>
+  </div>
+  
+  <!-- Error State -->
+  <div class="report-error-section" id="errorSection" style="display: none;">
+    <div class="error-message">
+      <h3>⚠️ Error</h3>
+      <p id="errorMessage"></p>
+      <button class="btn-primary" onclick="location.reload()">Try Again</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.report-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.report-form-section {
+  background: var(--bg-secondary, #1e2329);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.report-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  font-weight: 600;
+  color: var(--fg, #e7eaee);
+}
+
+.form-group input,
+.form-group textarea {
+  padding: 0.75rem;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  background: var(--bg, #0f1419);
+  color: var(--fg, #e7eaee);
+  font-size: 1rem;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.radio-group {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--primary, #4a9eff);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover, #3a8eef);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary, #2a2f35);
+  color: var(--fg, #e7eaee);
+  border: 1px solid var(--border, #333);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover, #3a3f45);
+}
+
+.report-loading-section {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border, #333);
+  border-top-color: var(--primary, #4a9eff);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.report-display-section {
+  background: var(--bg-secondary, #1e2329);
+  border-radius: 12px;
+  padding: 2rem;
+}
+
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--border, #333);
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.report-title-section h2 {
+  margin: 0;
+  font-size: 2rem;
+  color: var(--fg, #e7eaee);
+}
+
+.report-meta {
+  margin: 0.5rem 0 0;
+  color: var(--fg-secondary, #a0a5aa);
+  font-size: 0.9rem;
+}
+
+.report-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.report-section {
+  margin-bottom: 2rem;
+}
+
+.report-section h3 {
+  font-size: 1.5rem;
+  color: var(--fg, #e7eaee);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border, #333);
+}
+
+.report-text {
+  color: var(--fg, #e7eaee);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.findings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.finding-item {
+  background: var(--bg, #0f1419);
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.finding-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--fg, #e7eaee);
+  margin-bottom: 0.5rem;
+}
+
+.finding-insight {
+  color: var(--fg-secondary, #a0a5aa);
+  margin-bottom: 1rem;
+}
+
+.evidence-list {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.evidence-item {
+  color: var(--fg, #e7eaee);
+  margin: 0.5rem 0;
+  padding: 0.75rem;
+  background: var(--bg-secondary, #1e2329);
+  border-left: 3px solid var(--primary, #4a9eff);
+  border-radius: 4px;
+}
+
+.citations {
+  color: var(--fg-secondary, #a0a5aa);
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.confidence {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: var(--bg-tertiary, #2a2f35);
+  border-radius: 12px;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg, #0f1419);
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+}
+
+.timeline-date {
+  font-weight: 600;
+  color: var(--primary, #4a9eff);
+  min-width: 120px;
+}
+
+.timeline-event {
+  flex: 1;
+  color: var(--fg, #e7eaee);
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.source-item {
+  padding: 1rem;
+  background: var(--bg, #0f1419);
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+}
+
+.source-title {
+  font-weight: 600;
+  color: var(--fg, #e7eaee);
+  margin-bottom: 0.25rem;
+}
+
+.source-meta {
+  color: var(--fg-secondary, #a0a5aa);
+  font-size: 0.9rem;
+}
+
+.source-url {
+  color: var(--primary, #4a9eff);
+  text-decoration: none;
+}
+
+.source-url:hover {
+  text-decoration: underline;
+}
+
+.methodology-list,
+.limitations-list,
+.questions-list,
+.stats-list {
+  list-style: none;
+  padding: 0;
+}
+
+.methodology-list li,
+.limitations-list li,
+.questions-list li,
+.stats-list li {
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  background: var(--bg, #0f1419);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  color: var(--fg, #e7eaee);
+}
+
+.report-error-section {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.error-message {
+  background: var(--bg-secondary, #1e2329);
+  border: 1px solid var(--error, #ff4444);
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.error-message h3 {
+  color: var(--error, #ff4444);
+  margin-bottom: 1rem;
+}
+
+.error-message p {
+  color: var(--fg, #e7eaee);
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .report-container {
+    padding: 1rem;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .report-header {
+    flex-direction: column;
+  }
+  
+  .report-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+  
+  .report-actions a,
+  .report-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+</style>
+
+<script>
+(function() {
+  'use strict';
+  
+  // Get URL parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const jobId = urlParams.get('job_id');
+  const query = urlParams.get('query');
+  
+  const formSection = document.getElementById('formSection');
+  const loadingSection = document.getElementById('loadingSection');
+  const reportSection = document.getElementById('reportSection');
+  const errorSection = document.getElementById('errorSection');
+  
+  const reportForm = document.getElementById('reportForm');
+  const generateBtn = document.getElementById('generateBtn');
+  const downloadMd = document.getElementById('downloadMd');
+  const downloadJsonl = document.getElementById('downloadJsonl');
+  
+  let currentReportData = null;
+  let currentParams = {};
+  
+  // If job_id is provided, load batch research report
+  if (jobId) {
+    loadBatchReport(jobId);
+  } else if (query) {
+    // If query is provided, generate deep research report
+    document.getElementById('query').value = query;
+    if (urlParams.get('years_from')) {
+      document.getElementById('years_from').value = urlParams.get('years_from');
+    }
+    if (urlParams.get('years_to')) {
+      document.getElementById('years_to').value = urlParams.get('years_to');
+    }
+    if (urlParams.get('region')) {
+      document.getElementById('region').value = urlParams.get('region');
+    }
+    if (urlParams.get('max_sources')) {
+      document.getElementById('max_sources').value = urlParams.get('max_sources');
+    }
+    if (urlParams.get('depth')) {
+      document.querySelector(`input[name="depth"][value="${urlParams.get('depth')}"]`).checked = true;
+    }
+    generateReport();
+  }
+  
+  // Form submission handler
+  if (reportForm) {
+    reportForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      generateReport();
+    });
+  }
+  
+  async function generateReport() {
+    const query = document.getElementById('query').value.trim();
+    if (!query) {
+      showError('Please enter a research query');
+      return;
+    }
+    
+    const yearsFrom = document.getElementById('years_from').value || null;
+    const yearsTo = document.getElementById('years_to').value || null;
+    const region = document.getElementById('region').value || null;
+    const maxSources = parseInt(document.getElementById('max_sources').value) || 12;
+    const depth = document.querySelector('input[name="depth"]:checked').value || 'standard';
+    
+    currentParams = {
+      query,
+      years_from: yearsFrom ? parseInt(yearsFrom) : null,
+      years_to: yearsTo ? parseInt(yearsTo) : null,
+      region,
+      max_sources: maxSources,
+      depth
+    };
+    
+    formSection.style.display = 'none';
+    loadingSection.style.display = 'block';
+    reportSection.style.display = 'none';
+    errorSection.style.display = 'none';
+    
+    try {
+      const response = await fetch('/api/research/deep', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(currentParams)
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to generate report');
+      }
+      
+      const data = await response.json();
+      currentReportData = data;
+      displayReport(data);
+      
+      // Update download links
+      const mdParams = new URLSearchParams();
+      const jsonlParams = new URLSearchParams();
+      Object.entries(currentParams).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          mdParams.append(key, value.toString());
+          jsonlParams.append(key, value.toString());
+        }
+      });
+      downloadMd.href = `/api/research/deep/markdown?${mdParams.toString()}`;
+      downloadMd.download = `report-${query.substring(0, 50).replace(/[^a-z0-9]/gi, '-')}.md`;
+      downloadJsonl.href = `/api/research/deep/evidence?${jsonlParams.toString()}`;
+      downloadJsonl.download = `evidence-${query.substring(0, 50).replace(/[^a-z0-9]/gi, '-')}.jsonl`;
+      
+    } catch (error) {
+      console.error('Error generating report:', error);
+      showError(error.message || 'Failed to generate report');
+    }
+  }
+  
+  async function loadBatchReport(jobId) {
+    formSection.style.display = 'none';
+    loadingSection.style.display = 'block';
+    reportSection.style.display = 'none';
+    errorSection.style.display = 'none';
+    
+    try {
+      // Check job status first
+      const statusResponse = await fetch(`/api/research/job/${jobId}`);
+      if (!statusResponse.ok) {
+        throw new Error('Job not found');
+      }
+      
+      const jobStatus = await statusResponse.json();
+      if (jobStatus.status !== 'done') {
+        showError(`Job is not complete. Status: ${jobStatus.status}`);
+        return;
+      }
+      
+      // Load report
+      const reportResponse = await fetch(`/api/research/job/${jobId}/report`);
+      if (!reportResponse.ok) {
+        throw new Error('Failed to load report');
+      }
+      
+      const data = await reportResponse.json();
+      currentReportData = data;
+      displayReport(data);
+      
+      // Update download links for batch research
+      downloadMd.href = `/api/research/job/${jobId}/markdown`;
+      downloadMd.download = `report-${jobId}.md`;
+      downloadJsonl.href = `/api/research/job/${jobId}/evidence`;
+      downloadJsonl.download = `evidence-${jobId}.jsonl`;
+      
+    } catch (error) {
+      console.error('Error loading batch report:', error);
+      showError(error.message || 'Failed to load report');
+    }
+  }
+  
+  function displayReport(data) {
+    loadingSection.style.display = 'none';
+    reportSection.style.display = 'block';
+    
+    // Set title and meta
+    document.getElementById('reportTitle').textContent = `Deep Research Report: ${data.query}`;
+    const meta = document.getElementById('reportMeta');
+    if (data.generated_at) {
+      meta.textContent = `Generated: ${new Date(data.generated_at).toLocaleString()}`;
+    } else {
+      meta.textContent = `Query: ${data.query}`;
+    }
+    
+    // Executive Summary
+    document.getElementById('executiveSummary').textContent = data.executive_summary || 'No executive summary available.';
+    
+    // Key Findings
+    const findingsContainer = document.getElementById('keyFindings');
+    findingsContainer.innerHTML = '';
+    if (data.key_findings && data.key_findings.length > 0) {
+      data.key_findings.forEach((finding, index) => {
+        const findingDiv = document.createElement('div');
+        findingDiv.className = 'finding-item';
+        findingDiv.innerHTML = `
+          <div class="finding-title">${index + 1}. ${finding.title || 'Untitled'}</div>
+          <div class="finding-insight">${finding.insight || ''}</div>
+          ${finding.evidence && finding.evidence.length > 0 ? `
+            <div class="evidence-list">
+              ${finding.evidence.map(ev => `<div class="evidence-item">${ev}</div>`).join('')}
+            </div>
+          ` : ''}
+          ${finding.citations && finding.citations.length > 0 ? `
+            <div class="citations">Citations: ${finding.citations.join(', ')}</div>
+          ` : ''}
+          ${finding.confidence !== undefined ? `
+            <div class="confidence">Confidence: ${(finding.confidence * 100).toFixed(0)}%</div>
+          ` : ''}
+        `;
+        findingsContainer.appendChild(findingDiv);
+      });
+    } else {
+      findingsContainer.innerHTML = '<p>No key findings available.</p>';
+    }
+    
+    // Timeline
+    const timelineContainer = document.getElementById('timeline');
+    timelineContainer.innerHTML = '';
+    if (data.timeline && data.timeline.length > 0) {
+      data.timeline.forEach(item => {
+        const timelineDiv = document.createElement('div');
+        timelineDiv.className = 'timeline-item';
+        timelineDiv.innerHTML = `
+          <div class="timeline-date">${item.date || 'Unknown date'}</div>
+          <div class="timeline-event">${item.event || ''}${item.citations && item.citations.length > 0 ? ` <span class="citations">(${item.citations.join(', ')})</span>` : ''}</div>
+        `;
+        timelineContainer.appendChild(timelineDiv);
+      });
+    } else {
+      timelineContainer.innerHTML = '<p>No timeline data available.</p>';
+    }
+    
+    // Sources
+    const sourcesContainer = document.getElementById('sources');
+    sourcesContainer.innerHTML = '';
+    if (data.sources && data.sources.length > 0) {
+      data.sources.forEach(source => {
+        const sourceDiv = document.createElement('div');
+        sourceDiv.className = 'source-item';
+        sourceDiv.innerHTML = `
+          <div class="source-title">${source.title || 'Untitled'}</div>
+          <div class="source-meta">
+            ${source.year ? `${source.year} • ` : ''}
+            ${source.url ? `<a href="${source.url}" target="_blank" class="source-url">View Source</a> • ` : ''}
+            ${source.relevance !== undefined ? `Relevance: ${(source.relevance * 100).toFixed(0)}%` : ''}
+            ${source.id ? ` • ID: ${source.id}` : ''}
+          </div>
+          ${source.snippets && source.snippets.length > 0 ? `
+            <div class="evidence-list" style="margin-top: 0.5rem;">
+              ${source.snippets.map(snip => `<div class="evidence-item" style="font-size: 0.9rem;">${snip}</div>`).join('')}
+            </div>
+          ` : ''}
+        `;
+        sourcesContainer.appendChild(sourceDiv);
+      });
+    } else {
+      sourcesContainer.innerHTML = '<p>No sources available.</p>';
+    }
+    
+    // Methodology
+    const methodologyContainer = document.getElementById('methodology');
+    methodologyContainer.innerHTML = '';
+    if (data.methodology && data.methodology.length > 0) {
+      const ul = document.createElement('ul');
+      ul.className = 'methodology-list';
+      data.methodology.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.appendChild(li);
+      });
+      methodologyContainer.appendChild(ul);
+    } else {
+      methodologyContainer.innerHTML = '<p>No methodology information available.</p>';
+    }
+    
+    // Limitations
+    const limitationsContainer = document.getElementById('limitations');
+    limitationsContainer.innerHTML = '';
+    if (data.limitations && data.limitations.length > 0) {
+      const ul = document.createElement('ul');
+      ul.className = 'limitations-list';
+      data.limitations.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.appendChild(li);
+      });
+      limitationsContainer.appendChild(ul);
+    } else {
+      limitationsContainer.innerHTML = '<p>No limitations information available.</p>';
+    }
+    
+    // Next Questions
+    const nextQuestionsContainer = document.getElementById('nextQuestions');
+    nextQuestionsContainer.innerHTML = '';
+    if (data.next_questions && data.next_questions.length > 0) {
+      const ul = document.createElement('ul');
+      ul.className = 'questions-list';
+      data.next_questions.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.appendChild(li);
+      });
+      nextQuestionsContainer.appendChild(ul);
+    } else {
+      nextQuestionsContainer.innerHTML = '<p>No next questions available.</p>';
+    }
+    
+    // Statistics
+    const statsContainer = document.getElementById('stats');
+    statsContainer.innerHTML = '';
+    if (data.stats && Object.keys(data.stats).length > 0) {
+      const ul = document.createElement('ul');
+      ul.className = 'stats-list';
+      Object.entries(data.stats).forEach(([key, value]) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${key}:</strong> ${value}`;
+        ul.appendChild(li);
+      });
+      statsContainer.appendChild(ul);
+    } else {
+      statsContainer.innerHTML = '<p>No statistics available.</p>';
+    }
+  }
+  
+  function showError(message) {
+    loadingSection.style.display = 'none';
+    reportSection.style.display = 'none';
+    errorSection.style.display = 'block';
+    document.getElementById('errorMessage').textContent = message;
+  }
+})();
+</script>
+{% endblock %}
+

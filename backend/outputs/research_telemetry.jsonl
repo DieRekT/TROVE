@@ -1,1 +1,2 @@
 {"timestamp": "2025-11-12T10:34:58.938918Z", "query": "Iluka mineral sands rutile zircon (Clarence River, NSW)", "years_from": 1945, "years_to": 1980, "max_sources": 12, "depth": "standard", "sources_count": 0, "findings_count": 0, "timeline_count": 0, "success": false, "error": "No sources found"}
+{"timestamp": "2025-11-12T17:08:18.637282Z", "query": "Iluka mineral sands mining history", "years_from": 1970, "years_to": 1995, "max_sources": 12, "depth": "standard", "sources_count": 1, "findings_count": 1, "timeline_count": 1, "success": true, "error": null}

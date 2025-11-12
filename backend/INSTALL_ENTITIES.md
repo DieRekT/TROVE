@@ -34,6 +34,18 @@ python -m spacy download en_core_web_sm
 2. Visit `/notebook`
 3. Click an entity to see its timeline
 4. View mentions over time in interactive chart
+5. Select multiple entities and click "Compare Selected" to compare timelines
+6. Click a bar in the timeline to see articles from that year
+
+## 💬 Chat Integration
+
+Ask questions in chat:
+- "extract all people mentioned in 1915 Gallipoli articles"
+- "when was X mentioned most?"
+- "compare X vs Y"
+- "show articles about X from 1926"
+
+Entities are automatically rendered in chat messages with clickable badges.
 
 ## 🔧 Optional Features
 

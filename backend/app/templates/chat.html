@@ -361,6 +361,16 @@ async function sendMessage(msg) {
       renderTimelineInChat(j.timeline);
     }
     
+    // Handle entity responses
+    if (j.entities && Array.isArray(j.entities) && j.entities.length > 0) {
+      renderEntitiesInChat(j.entities);
+    }
+    
+    // Handle structured reports
+    if (j.report) {
+      renderReportInChat(j.report);
+    }
+    
     // Handle article lists
     if (j.articles && Array.isArray(j.articles) && j.articles.length > 0) {
       renderArticleList(j.articles);
@@ -617,6 +627,267 @@ function escapeHtml(text) {
 }
 
 let chatTimelineChart = null;
+
+/**
+ * Render entities in chat message
+ */
+function renderEntitiesInChat(entities) {
+  if (!entities || !Array.isArray(entities) || entities.length === 0) return;
+  
+  const lastMessage = M.lastElementChild;
+  if (!lastMessage) return;
+  
+  // Create entity container
+  const entityContainer = document.createElement('div');
+  entityContainer.className = 'chat-entities-container';
+  entityContainer.style.marginTop = '1rem';
+  entityContainer.style.padding = '1rem';
+  entityContainer.style.background = 'var(--bg-secondary, #1a1d24)';
+  entityContainer.style.borderRadius = '8px';
+  entityContainer.style.border = '1px solid var(--border, #222831)';
+  
+  // Create header
+  const header = document.createElement('h4');
+  header.style.margin = '0 0 0.75rem 0';
+  header.style.fontSize = '1rem';
+  header.style.color = 'var(--fg, #e7eaee)';
+  header.textContent = `📋 Extracted Entities (${entities.length})`;
+  entityContainer.appendChild(header);
+  
+  // Create entity list
+  const entityList = document.createElement('div');
+  entityList.style.display = 'flex';
+  entityList.style.flexWrap = 'wrap';
+  entityList.style.gap = '0.5rem';
+  
+  // Entity type badges
+  const typeBadges = {
+    'PERSON': '👤',
+    'ORG': '🏢',
+    'GPE': '🌍',
+    'LOC': '📍',
+    'EVENT': '📅',
+    'FAC': '🏛️',
+    'PRODUCT': '📦'
+  };
+  
+  entities.slice(0, 20).forEach(ent => {
+    const entityBadge = document.createElement('div');
+    entityBadge.className = 'entity-badge';
+    entityBadge.style.display = 'inline-flex';
+    entityBadge.style.alignItems = 'center';
+    entityBadge.style.gap = '0.25rem';
+    entityBadge.style.padding = '0.375rem 0.75rem';
+    entityBadge.style.background = 'var(--bg, #0f1117)';
+    entityBadge.style.border = '1px solid var(--border, #222831)';
+    entityBadge.style.borderRadius = '6px';
+    entityBadge.style.fontSize = '0.875rem';
+    entityBadge.style.cursor = 'pointer';
+    entityBadge.style.transition = 'all 0.2s';
+    
+    entityBadge.onmouseover = () => {
+      entityBadge.style.background = 'var(--bg-hover, #1a1d24)';
+      entityBadge.style.borderColor = 'var(--brand, #6699cc)';
+    };
+    entityBadge.onmouseout = () => {
+      entityBadge.style.background = 'var(--bg, #0f1117)';
+      entityBadge.style.borderColor = 'var(--border, #222831)';
+    };
+    
+    // Entity name
+    const name = document.createElement('span');
+    name.style.color = 'var(--fg, #e7eaee)';
+    name.style.fontWeight = '500';
+    name.textContent = ent.text || ent.name || 'Unknown';
+    entityBadge.appendChild(name);
+    
+    // Entity type badge
+    const type = document.createElement('span');
+    type.style.color = 'var(--fg-secondary, #cbd5e0)';
+    type.style.fontSize = '0.75rem';
+    type.textContent = typeBadges[ent.label] || '🏷️';
+    type.title = ent.label || 'Unknown';
+    entityBadge.appendChild(type);
+    
+    // Count badge
+    if (ent.count && ent.count > 1) {
+      const count = document.createElement('span');
+      count.style.color = 'var(--fg-secondary, #cbd5e0)';
+      count.style.fontSize = '0.75rem';
+      count.style.marginLeft = '0.25rem';
+      count.textContent = `(${ent.count})`;
+      entityBadge.appendChild(count);
+    }
+    
+    // Click handler - show timeline for entity
+    entityBadge.onclick = () => {
+      const term = ent.text || ent.name || '';
+      if (term) {
+        // Trigger timeline query
+        I.value = `when was ${term} mentioned most?`;
+        F.dispatchEvent(new Event('submit'));
+      }
+    };
+    
+    // Wikipedia link
+    if (ent.link) {
+      const link = document.createElement('a');
+      link.href = ent.link;
+      link.target = '_blank';
+      link.style.marginLeft = '0.25rem';
+      link.style.color = 'var(--brand, #6699cc)';
+      link.textContent = '🔗';
+      link.title = 'View on Wikipedia';
+      entityBadge.appendChild(link);
+    }
+    
+    entityList.appendChild(entityBadge);
+  });
+  
+  entityContainer.appendChild(entityList);
+  
+  // Add link to notebook page
+  if (entities.length > 20) {
+    const moreLink = document.createElement('a');
+    moreLink.href = '/notebook';
+    moreLink.style.display = 'block';
+    moreLink.style.marginTop = '0.75rem';
+    moreLink.style.color = 'var(--brand, #6699cc)';
+    moreLink.style.fontSize = '0.875rem';
+    moreLink.textContent = `View all ${entities.length} entities in Notebook →`;
+    entityContainer.appendChild(moreLink);
+  }
+  
+  lastMessage.querySelector('.message-content').appendChild(entityContainer);
+}
+
+/**
+ * Render structured report in chat message
+ */
+function renderReportInChat(report) {
+  if (!report) return;
+  
+  const lastMessage = M.lastElementChild;
+  if (!lastMessage) return;
+  
+  // Create report container
+  const reportContainer = document.createElement('div');
+  reportContainer.className = 'chat-report-container';
+  reportContainer.style.marginTop = '1rem';
+  reportContainer.style.padding = '1rem';
+  reportContainer.style.background = 'var(--bg-secondary, #1a1d24)';
+  reportContainer.style.borderRadius = '8px';
+  reportContainer.style.border = '1px solid var(--border, #222831)';
+  
+  // Report header
+  const header = document.createElement('h4');
+  header.style.margin = '0 0 0.75rem 0';
+  header.style.fontSize = '1rem';
+  header.style.color = 'var(--fg, #e7eaee)';
+  header.textContent = '📊 Research Report';
+  reportContainer.appendChild(header);
+  
+  // Executive summary
+  if (report.executive_summary) {
+    const summary = document.createElement('div');
+    summary.style.marginBottom = '1rem';
+    summary.style.padding = '0.75rem';
+    summary.style.background = 'var(--bg, #0f1117)';
+    summary.style.borderRadius = '6px';
+    summary.style.borderLeft = '3px solid var(--brand, #6699cc)';
+    const summaryTitle = document.createElement('strong');
+    summaryTitle.style.color = 'var(--fg, #e7eaee)';
+    summaryTitle.textContent = 'Executive Summary: ';
+    summary.appendChild(summaryTitle);
+    const summaryText = document.createElement('span');
+    summaryText.style.color = 'var(--fg-secondary, #cbd5e0)';
+    summaryText.textContent = report.executive_summary;
+    summary.appendChild(summaryText);
+    reportContainer.appendChild(summary);
+  }
+  
+  // Key findings
+  if (report.key_findings && Array.isArray(report.key_findings) && report.key_findings.length > 0) {
+    const findingsTitle = document.createElement('h5');
+    findingsTitle.style.margin = '0.75rem 0 0.5rem 0';
+    findingsTitle.style.fontSize = '0.9rem';
+    findingsTitle.style.color = 'var(--fg, #e7eaee)';
+    findingsTitle.textContent = 'Key Findings:';
+    reportContainer.appendChild(findingsTitle);
+    
+    const findingsList = document.createElement('ul');
+    findingsList.style.margin = '0';
+    findingsList.style.paddingLeft = '1.5rem';
+    findingsList.style.color = 'var(--fg-secondary, #cbd5e0)';
+    
+    report.key_findings.slice(0, 5).forEach(finding => {
+      const li = document.createElement('li');
+      li.style.marginBottom = '0.5rem';
+      li.innerHTML = `<strong>${escapeHtml(finding.title || 'Finding')}:</strong> ${escapeHtml(finding.insight || '')}`;
+      findingsList.appendChild(li);
+    });
+    
+    reportContainer.appendChild(findingsList);
+  }
+  
+  // Timeline
+  if (report.timeline && Array.isArray(report.timeline) && report.timeline.length > 0) {
+    const timelineTitle = document.createElement('h5');
+    timelineTitle.style.margin = '0.75rem 0 0.5rem 0';
+    timelineTitle.style.fontSize = '0.9rem';
+    timelineTitle.style.color = 'var(--fg, #e7eaee)';
+    timelineTitle.textContent = 'Timeline:';
+    reportContainer.appendChild(timelineTitle);
+    
+    // Render timeline chart if available
+    renderTimelineInChat({
+      ok: true,
+      timeline: report.timeline.map(t => ({
+        year: t.date ? t.date.split('-')[0] : 'Unknown',
+        count: 1
+      }))
+    });
+  }
+  
+  // Sources
+  if (report.sources && Array.isArray(report.sources) && report.sources.length > 0) {
+    const sourcesTitle = document.createElement('h5');
+    sourcesTitle.style.margin = '0.75rem 0 0.5rem 0';
+    sourcesTitle.style.fontSize = '0.9rem';
+    sourcesTitle.style.color = 'var(--fg, #e7eaee)';
+    sourcesTitle.textContent = `Sources (${report.sources.length}):`;
+    reportContainer.appendChild(sourcesTitle);
+    
+    const sourcesList = document.createElement('div');
+    sourcesList.style.display = 'flex';
+    sourcesList.style.flexDirection = 'column';
+    sourcesList.style.gap = '0.5rem';
+    
+    report.sources.slice(0, 5).forEach(source => {
+      const sourceItem = document.createElement('div');
+      sourceItem.style.padding = '0.5rem';
+      sourceItem.style.background = 'var(--bg, #0f1117)';
+      sourceItem.style.borderRadius = '4px';
+      sourceItem.style.fontSize = '0.875rem';
+      sourceItem.style.color = 'var(--fg-secondary, #cbd5e0)';
+      sourceItem.innerHTML = `<strong>${escapeHtml(source.title || 'Untitled')}</strong> ${source.year ? `(${source.year})` : ''}`;
+      if (source.url) {
+        const link = document.createElement('a');
+        link.href = source.url;
+        link.target = '_blank';
+        link.style.marginLeft = '0.5rem';
+        link.style.color = 'var(--brand, #6699cc)';
+        link.textContent = '🔗';
+        sourceItem.appendChild(link);
+      }
+      sourcesList.appendChild(sourceItem);
+    });
+    
+    reportContainer.appendChild(sourcesList);
+  }
+  
+  lastMessage.querySelector('.message-content').appendChild(reportContainer);
+}
 
 /**
  * Render timeline chart in chat message

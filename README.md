@@ -10,12 +10,16 @@ AI-powered search, summarization, and analysis of historical newspaper archives 
 - Reader with scrape fallback if articleText/snippet is missing
 - Context pinning + summarization; Markdown / JSONL exports
 - Lightweight cache + topic guard to reduce noise and API calls
+- **Entity Extraction** - Extract people, organizations, places, events from articles (spaCy NER)
+- **Timeline Visualization** - Track entity mentions over time with interactive charts
+- **Chat Integration** - Natural language queries with entity extraction, timeline, and report generation
+- **Structured Reports** - AI-powered research reports with executive summaries, findings, and timelines
 
 ## 🛠️ Tech Stack
 
 - **Backend:** FastAPI, Python 3.10/3.11, SQLite + FTS5 (BM25)
-- **Frontend:** Jinja2 templates, Tailwind, Vanilla JS
-- **AI:** OpenAI (optional for synthesis), spaCy (NER optional)
+- **Frontend:** Jinja2 templates, Tailwind, Vanilla JS, Chart.js
+- **AI:** OpenAI (optional for synthesis), spaCy (NER with Wikipedia links)
 - **Infra:** ngrok (optional), Cursor IDE, GitHub Actions (validator)
 
 ## 🚀 Quick Start
