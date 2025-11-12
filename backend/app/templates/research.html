@@ -38,12 +38,10 @@
       <button type="submit" class="btn-primary" id="startBtn">Start Research</button>
     </form>
     
-    <div class="sample-queries" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border, #e0e0e0);">
-      <p style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: var(--muted, #666);">Quick start:</p>
-      <button type="button" class="btn-secondary" id="sampleIluka" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
-        🎯 Run sample: Iluka mining (1945–1980)
-      </button>
-    </div>
+    <section style="margin:12px 0;padding:12px;border:1px solid #ddd;border-radius:12px">
+      <b>Quick samples</b>
+      <ul id="sample-list" style="margin-top:8px"></ul>
+    </section>
   </div>
   
   <div class="research-progress-section" id="progressSection" style="display: none;">
@@ -58,18 +56,45 @@
   </div>
   
   <div class="research-results-section" id="resultsSection" style="display: none;">
-    <h2>Research Findings</h2>
-    <div class="report-actions">
-      <a href="#" id="downloadMd" class="btn-secondary" download>Download Markdown</a>
-      <a href="#" id="downloadJsonl" class="btn-secondary" download>Download Evidence (JSONL)</a>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border, #222831);">
+      <h2 style="margin: 0; font-size: 1.75rem; font-weight: 700; color: var(--fg, #e7eaee);">Research Findings</h2>
+      <div class="report-actions" style="display: flex; gap: 0.75rem;">
+        <a href="#" id="downloadMd" class="btn-secondary" download>📄 Download Markdown</a>
+        <a href="#" id="downloadJsonl" class="btn-secondary" download>📦 Download Evidence (JSONL)</a>
+      </div>
     </div>
     <div class="report-content" id="reportContent">
-      <p>Loading report...</p>
+      <div class="empty-state">
+        <div class="empty-state-icon">📊</div>
+        <p>Loading report...</p>
+      </div>
     </div>
   </div>
 </div>
 
 <link rel="stylesheet" href="{{ static_url(request, 'static/css/research.css') }}">
 <script src="{{ static_url(request, 'static/js/research.js') }}"></script>
+<script>
+(async function(){
+  try{
+    const res = await fetch("/static/samples/research_samples.json");
+    const data = await res.json();
+    const ul = document.querySelector("#sample-list");
+    (data.samples||[]).forEach(s=>{
+      const li=document.createElement("li"); li.style.margin="6px 0";
+      const a=document.createElement("a"); a.href="#"; a.textContent="▶ "+s.label; a.onclick=(e)=>{
+        e.preventDefault();
+        const q = document.querySelector("#question");
+        const tw = document.querySelector("#time_window");
+        if(q) q.value = s.query;
+        if(tw) tw.value = (s.years_from||"") + "-" + (s.years_to||"");
+        const btn = document.querySelector("#startBtn");
+        if(btn) btn.click();
+      };
+      li.appendChild(a); ul.appendChild(li);
+    });
+  }catch(e){ console.error(e); }
+})();
+</script>
 {% endblock %}
 

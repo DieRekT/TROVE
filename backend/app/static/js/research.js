@@ -3,6 +3,7 @@
 let currentJobId = null;
 let eventSource = null;
 let currentReport = null;
+let statusPollInterval = null;
 
 // New deep research function using streaming /api/research/deep/stream
 async function startDeepResearch() {
@@ -119,51 +120,10 @@ async function startDeepResearch() {
     
     currentReport = report;
     
-    // Render report
-    const lines = [];
-    lines.push(`<h2>Executive Summary</h2><p>${report.executive_summary}</p>`);
-    
-    if (report.key_findings?.length) {
-      lines.push('<h2>Key Findings</h2>');
-      report.key_findings.forEach((f, i) => {
-        lines.push(`<h3>${i + 1}. ${f.title}</h3><p>${f.insight}</p>`);
-        if (f.evidence?.length) {
-          lines.push('<blockquote>');
-          f.evidence.forEach(q => {
-            // Ensure quotes are properly formatted
-            const quote = String(q).replace(/^["']|["']$/g, ''); // Remove surrounding quotes if present
-            lines.push(`<p>"${quote}"</p>`);
-          });
-          lines.push('</blockquote>');
-        }
-        if (f.citations?.length) {
-          lines.push(`<p><strong>Citations:</strong> ${f.citations.join(', ')}</p>`);
-        }
-      });
+    // Render professional report
+    if (reportContent) {
+      reportContent.innerHTML = renderProfessionalReport(report);
     }
-    
-    if (report.timeline?.length) {
-      lines.push('<h2>Timeline</h2><ul>');
-      report.timeline.forEach(t => {
-        lines.push(`<li>${t.date}: ${t.event} (${(t.citations || []).join(', ')})</li>`);
-      });
-      lines.push('</ul>');
-    }
-    
-    if (report.sources?.length) {
-      lines.push('<h2>Sources</h2><ul>');
-      report.sources.forEach(s => {
-        let row = `<li>${s.title}`;
-        if (s.url) row += ` — <a href="${s.url}" target="_blank" rel="noopener">${s.url}</a>`;
-        if (s.year) row += ` — ${s.year}`;
-        if (s.relevance !== undefined) row += ` — rel=${s.relevance.toFixed(2)}</li>`;
-        else row += '</li>';
-        lines.push(row);
-      });
-      lines.push('</ul>');
-    }
-    
-    if (reportContent) reportContent.innerHTML = lines.join('\n');
     if (progressText) progressText.textContent = '100%';
     if (progressFill) progressFill.style.width = '100%';
     if (progressSection) progressSection.style.display = 'none';
@@ -509,5 +469,155 @@ function markdownToHtml(markdown) {
   }).join('\n');
   
   return html;
+}
+
+// Professional report renderer
+function renderProfessionalReport(report) {
+  const parts = [];
+  
+  // Report Header
+  parts.push(`
+    <div class="report-header">
+      <h1>📊 Deep Research Report</h1>
+      <div class="query-badge">${escapeHtml(report.query)}</div>
+      ${report.generated_at ? `<div style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--fg-secondary, #cbd5e0);">Generated: ${new Date(report.generated_at).toLocaleString()}</div>` : ''}
+    </div>
+  `);
+  
+  // Executive Summary
+  if (report.executive_summary) {
+    parts.push(`
+      <div class="executive-summary-card">
+        <h2>📋 Executive Summary</h2>
+        <p>${escapeHtml(report.executive_summary)}</p>
+      </div>
+    `);
+  }
+  
+  // Key Findings
+  if (report.key_findings?.length) {
+    parts.push(`
+      <div class="section-header">
+        <h2><span class="section-icon">🔍</span> Key Findings</h2>
+        <span class="section-count">${report.key_findings.length}</span>
+      </div>
+      <div class="findings-grid">
+    `);
+    
+    report.key_findings.forEach((f, i) => {
+      const confidence = f.confidence || 0.65;
+      const confidenceClass = confidence >= 0.8 ? 'confidence-high' : confidence >= 0.6 ? 'confidence-medium' : 'confidence-low';
+      const confidenceText = confidence >= 0.8 ? 'High' : confidence >= 0.6 ? 'Medium' : 'Low';
+      
+      parts.push(`
+        <div class="finding-card">
+          <div class="finding-header">
+            <div class="finding-number">${i + 1}</div>
+            <h3 class="finding-title">${escapeHtml(f.title || 'Untitled Finding')}</h3>
+            <span class="confidence-badge ${confidenceClass}">${confidenceText}</span>
+          </div>
+          <div class="finding-insight">${escapeHtml(f.insight || '')}</div>
+      `);
+      
+      if (f.evidence?.length) {
+        parts.push('<div class="evidence-quotes">');
+        f.evidence.forEach(q => {
+          const quote = String(q).replace(/^["']|["']$/g, '');
+          parts.push(`<div class="evidence-quote">${escapeHtml(quote)}</div>`);
+        });
+        parts.push('</div>');
+      }
+      
+      if (f.citations?.length) {
+        parts.push('<div class="citations-list">');
+        f.citations.forEach(cite => {
+          parts.push(`<a href="#" class="citation-badge" title="View source">📎 ${escapeHtml(cite)}</a>`);
+        });
+        parts.push('</div>');
+      }
+      
+      parts.push('</div>');
+    });
+    
+    parts.push('</div>');
+  }
+  
+  // Timeline
+  if (report.timeline?.length) {
+    parts.push(`
+      <div class="timeline-section">
+        <div class="section-header">
+          <h2><span class="section-icon">📅</span> Timeline</h2>
+          <span class="section-count">${report.timeline.length}</span>
+        </div>
+        <div class="timeline-container">
+    `);
+    
+    report.timeline.forEach(t => {
+      const citations = t.citations || [];
+      parts.push(`
+        <div class="timeline-item">
+          <div class="timeline-date">${escapeHtml(t.date || 'Unknown date')}</div>
+          <div class="timeline-event">${escapeHtml(t.event || '')}</div>
+          ${citations.length > 0 ? `
+            <div class="timeline-citations">
+              ${citations.map(cite => `<a href="#" class="citation-badge">📎 ${escapeHtml(cite)}</a>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `);
+    });
+    
+    parts.push('</div></div>');
+  }
+  
+  // Sources
+  if (report.sources?.length) {
+    parts.push(`
+      <div class="sources-section">
+        <div class="section-header">
+          <h2><span class="section-icon">📚</span> Sources</h2>
+          <span class="section-count">${report.sources.length}</span>
+        </div>
+        <div class="sources-grid">
+    `);
+    
+    report.sources.forEach(s => {
+      parts.push(`
+        <div class="source-card">
+          <h4 class="source-title">${escapeHtml(s.title || 'Untitled')}</h4>
+          <div class="source-meta">
+            ${s.year ? `<span class="source-year">📅 ${s.year}</span>` : ''}
+            ${s.relevance !== undefined ? `<span class="relevance-score">⭐ ${s.relevance.toFixed(2)}</span>` : ''}
+            ${s.url ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" class="source-link">🔗 View on Trove</a>` : ''}
+          </div>
+          ${s.snippets?.length ? `<div style="margin-top: 0.75rem; font-size: 0.875rem; color: var(--fg-secondary, #cbd5e0); line-height: 1.6;">${escapeHtml(s.snippets[0]).substring(0, 150)}...</div>` : ''}
+        </div>
+      `);
+    });
+    
+    parts.push('</div></div>');
+  }
+  
+  // Stats
+  if (report.stats && Object.keys(report.stats).length > 0) {
+    parts.push(`
+      <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border, #222831);">
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+    `);
+    Object.entries(report.stats).forEach(([key, value]) => {
+      parts.push(`<span class="stats-badge"><strong>${escapeHtml(key)}:</strong> ${escapeHtml(String(value))}</span>`);
+    });
+    parts.push('</div></div>');
+  }
+  
+  return parts.join('\n');
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 

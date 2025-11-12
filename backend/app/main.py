@@ -12,7 +12,7 @@ from .deps import get_cache, get_http_client
 from .models import NormalizedItem, SearchResponse
 from .schemas import ReadyResponse
 from .utils.csv_export import items_to_csv_bytes
-from .routers import deep_research, formatting, dashboard, batch_research, search_reader, reader_text, summarize, tunnel, qrcode, context, pages, items, text_tools, mobile_api
+from .routers import deep_research, formatting, dashboard, batch_research, search_reader, reader_text, summarize, tunnel, qrcode, context, pages, items, text_tools, mobile_api, structured_synthesis, research
 
 app = FastAPI(title="Archive Detective API", version="0.1.0")
 
@@ -103,6 +103,8 @@ app.include_router(pages.router)
 app.include_router(items.router)
 app.include_router(text_tools.router)
 app.include_router(mobile_api.router)
+app.include_router(structured_synthesis.router)
+app.include_router(research.router)
 
 # Mount static files
 static_dir = Path(__file__).parent / "static"
@@ -123,3 +125,28 @@ async def tts_stream():
 async def root():
     """Redirect root to dashboard."""
     return RedirectResponse(url="/dashboard", status_code=302)
+
+
+@app.on_event("startup")
+async def start_background_tasks():
+    """Start background workers on application startup."""
+    import asyncio
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Start summary worker if available
+    try:
+        import sys
+        from pathlib import Path
+        root_path = Path(__file__).parent.parent.parent.parent
+        if str(root_path) not in sys.path:
+            sys.path.insert(0, str(root_path))
+        
+        from app.archive_detective.summarize_async import summary_worker
+        asyncio.create_task(summary_worker())
+        logger.info("✅ Background summary worker started")
+    except ImportError as e:
+        logger.warning(f"Could not start summary worker: {e}")
+    except Exception as e:
+        logger.error(f"Error starting background tasks: {e}")
