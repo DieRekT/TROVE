@@ -46,15 +46,40 @@ class TroveClient:
             params["l-year"] = f"{year_from}-"
         elif year_to:
             params["l-year"] = f"-{year_to}"
-        # State filter
+        # State filter - Trove API v3 may not support l-state parameter
+        # Try to use it, but don't fail if it's not supported
+        # Note: State filtering may need to be done post-fetch
         if state:
-            params["l-state"] = state  # NSW, WA, etc.
+            state_map = {
+                "NSW": "New South Wales",
+                "WA": "Western Australia",
+                "VIC": "Victoria",
+                "QLD": "Queensland",
+                "SA": "South Australia",
+                "TAS": "Tasmania",
+                "NT": "Northern Territory",
+                "ACT": "Australian Capital Territory",
+            }
+            full_state = state_map.get(state.upper(), state)
+            # Try adding state filter, but API may not support it
+            # If API returns 400, we'll handle it in the calling code
+            params["l-state"] = full_state
 
         headers = {"X-API-KEY": self.api_key}
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
-            r = await client.get(TROVE_API, params=params)
-            r.raise_for_status()
-            return r.json()
+            try:
+                r = await client.get(TROVE_API, params=params)
+                r.raise_for_status()
+                return r.json()
+            except httpx.HTTPStatusError as e:
+                # If 400 error and state parameter was used, try without it
+                if e.response.status_code == 400 and state and "l-state" in params:
+                    # Retry without state filter
+                    params_no_state = {k: v for k, v in params.items() if k != "l-state"}
+                    r = await client.get(TROVE_API, params=params_no_state)
+                    r.raise_for_status()
+                    return r.json()
+                raise
 
     @staticmethod
     def extract_hits(payload: Dict[str, Any]) -> List[Dict[str, Any]]:

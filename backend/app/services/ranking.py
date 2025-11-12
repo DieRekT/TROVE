@@ -18,28 +18,72 @@ def date_proximity(year: Optional[int], y_from: Optional[int], y_to: Optional[in
     mid = (y_from + y_to) / 2
     return 1.0 / (1.0 + abs(year - mid) / max(1.0, (y_to - y_from)/2 or 1.0))
 
-def bm25_to_score(bm25_value: float) -> float:
+def bm25_to_score(bm25_value: float, min_bm25: float | None = None, max_bm25: float | None = None) -> float:
     """
-    Map SQLite FTS5 bm25() score to 0-1 relevance score.
+    Map SQLite FTS5 bm25() score to 0-1 relevance score using min-max normalization.
     
     In FTS5, bm25() returns negative values where:
     - More negative (lower) = higher relevance
     - Less negative (higher) = lower relevance
     
-    We convert to 0-1 where 1.0 = most relevant.
-    Formula: score = 1.0 - (1.0 / (1.0 + abs(bm25_value)))
+    When min_bm25 and max_bm25 are provided, uses min-max normalization:
+    score = (max_bm25 - bm25_value) / (max_bm25 - min_bm25 + 1e-9)
     
-    Examples:
-    - bm25=-10 (very relevant) → score ≈ 0.91
-    - bm25=-5 (relevant) → score ≈ 0.83
-    - bm25=-1 (less relevant) → score ≈ 0.5
+    This ensures:
+    - Most relevant (lowest bm25) → score = 1.0
+    - Least relevant (highest bm25) → score = 0.0
+    - All scores in between are linearly interpolated
+    
+    If min/max not provided, falls back to a simple normalization:
+    score = 1.0 - (1.0 / (1.0 + abs(bm25_value)))
     """
     # Handle non-negative bm25 (shouldn't happen in FTS5, but be defensive)
     if bm25_value >= 0:
         return 0.0
-    # More negative bm25 = higher relevance = higher score
-    # Use: 1.0 - (1.0 / (1.0 + abs(bm25))) so abs(bm25)=10 → 0.91, abs(bm25)=1 → 0.5
+    
+    # Use min-max normalization if min/max provided
+    if min_bm25 is not None and max_bm25 is not None:
+        # Prevent division by zero
+        denominator = max_bm25 - min_bm25
+        if denominator < 1e-9:
+            # All values are the same, return 1.0 for all (they're all equally relevant)
+            return 1.0
+        # Normalize: (max - value) / (max - min) so lower bm25 → higher score
+        score = (max_bm25 - bm25_value) / denominator
+        return max(0.0, min(1.0, score))
+    
+    # Fallback: simple normalization when min/max not available
     return 1.0 - (1.0 / (1.0 + abs(bm25_value)))
+
+
+def normalize_bm25_scores(bm25_values: List[float]) -> List[float]:
+    """
+    Normalize a list of BM25 scores to 0-1 range using min-max normalization.
+    
+    Returns normalized scores in the same order as input.
+    """
+    if not bm25_values:
+        return []
+    
+    # Filter out invalid values (non-negative)
+    valid_values = [v for v in bm25_values if v < 0]
+    if not valid_values:
+        # All invalid, return zeros
+        return [0.0] * len(bm25_values)
+    
+    min_bm25 = min(valid_values)
+    max_bm25 = max(valid_values)
+    
+    # Normalize each value
+    normalized = []
+    for v in bm25_values:
+        if v >= 0:
+            normalized.append(0.0)
+        else:
+            score = bm25_to_score(v, min_bm25, max_bm25)
+            normalized.append(score)
+    
+    return normalized
 
 def blend(bm25: float, title_boost: float, date_boost: float, nsw_bonus: float=0.0) -> float:
     # weighted sum → [0..1.7] approx; clamp 0..1

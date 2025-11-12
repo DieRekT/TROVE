@@ -24,7 +24,7 @@ templates.env.globals["static_url"] = static_url
 @router.get("/search", response_class=HTMLResponse)
 async def search_page(
     request: Request,
-    q: str = Query("", min_length=0),
+    q: str | None = Query(None, max_length=500),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     client=Depends(get_http_client),
@@ -33,24 +33,51 @@ async def search_page(
     """Search page with results."""
     items = []
     total = 0
-    if q:
+    query = q.strip() if q else ""
+    if query:
         try:
-            data = await search_trove(client, q=q, page=page, page_size=page_size)
+            data = await search_trove(client, q=query, page=page, page_size=page_size)
             items = data.get("items", [])
             total = int(data.get("total", 0))
         except Exception as e:
             # Graceful error handling
             pass
     
+    # Default filter suggestions (can be enhanced later)
+    filter_suggestions = {
+        "date_presets": [
+            {"label": "Last 10 years", "year_from": 2014, "year_to": 2024},
+            {"label": "Last 50 years", "year_from": 1974, "year_to": 2024},
+            {"label": "1900s", "year_from": 1900, "year_to": 1999},
+            {"label": "1800s", "year_from": 1800, "year_to": 1899},
+        ],
+        "decades": [],
+        "places": [],
+        "publications": [],
+        "formats": [],
+    }
+    
     return templates.TemplateResponse(
         "search.html",
         {
             "request": request,
-            "query": q,
+            "query": query,
             "items": items,
             "total": total,
             "page": page,
             "page_size": page_size,
+            "filter_suggestions": filter_suggestions,
+            "category": "newspaper",
+            "category_options": [
+                {"id": "newspaper", "label": "Newspapers"},
+                {"id": "article", "label": "Articles"},
+                {"id": "book", "label": "Books"},
+                {"id": "picture", "label": "Pictures"},
+                {"id": "all", "label": "All"},
+            ],
+            "applied_filters": {},
+            "year_from": None,
+            "year_to": None,
         }
     )
 
