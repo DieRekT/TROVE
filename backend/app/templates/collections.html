@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}Collections - Troveing{% endblock %}
+{% block content %}
+<div class="collections-layout">
+  <header class="collections-header">
+    <h1>📚 Collections</h1>
+    <div class="header-actions">
+      <button class="btn-primary" onclick="createCollection()">+ New Collection</button>
+      <select id="sortSelect" class="filter-select" onchange="sortCollections()">
+        <option value="recent">Recent</option>
+        <option value="name">Name</option>
+        <option value="size">Size</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- Collections Board -->
+  <main class="collections-board" id="collectionsBoard">
+    <!-- Collection Cards -->
+    <div class="collection-card" draggable="true" data-id="1">
+      <div class="card-header">
+        <h3>Research: Colonial History</h3>
+        <div class="card-actions">
+          <button class="btn-icon" onclick="editCollection(1)">✏️</button>
+          <button class="btn-icon" onclick="deleteCollection(1)">🗑️</button>
+        </div>
+      </div>
+      <div class="card-tags">
+        <span class="tag">history</span>
+        <span class="tag">colonial</span>
+        <span class="tag">NSW</span>
+      </div>
+      <div class="card-stats">
+        <span>12 items</span>
+        <span>Updated 2 days ago</span>
+      </div>
+      <div class="card-thumbnails">
+        <!-- Thumbnails would go here -->
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-collections" id="emptyState" style="display: none;">
+      <div class="empty-icon">📚</div>
+      <h2>No Collections Yet</h2>
+      <p>Create your first collection to organize your research items.</p>
+      <button class="btn-primary" onclick="createCollection()">Create Collection</button>
+    </div>
+  </main>
+
+  <!-- Collection Detail Modal -->
+  <div class="modal" id="collectionModal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">Collection Details</h2>
+        <button class="btn-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="collection-detail">
+          <div class="detail-section">
+            <label>Name</label>
+            <input type="text" id="collectionName" placeholder="Collection name">
+          </div>
+          <div class="detail-section">
+            <label>Tags</label>
+            <input type="text" id="collectionTags" placeholder="history, colonial, NSW (comma-separated)">
+          </div>
+          <div class="detail-section">
+            <label>Description</label>
+            <textarea id="collectionDesc" rows="3" placeholder="Optional description"></textarea>
+          </div>
+        </div>
+        
+        <div class="collection-items" id="collectionItems">
+          <h3>Items in Collection</h3>
+          <div class="items-list" id="itemsList">
+            <p class="empty-items">No items yet. Add items from search results.</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveCollection()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Collections stored in localStorage (would use API in production)
+function loadCollections() {
+  const stored = localStorage.getItem('collections');
+  if (stored) {
+    const collections = JSON.parse(stored);
+    renderCollections(collections);
+  } else {
+    // Default collection
+    const defaultCollections = [{
+      id: 1,
+      name: 'Research: Colonial History',
+      tags: ['history', 'colonial', 'NSW'],
+      items: [],
+      updated: new Date().toISOString()
+    }];
+    localStorage.setItem('collections', JSON.stringify(defaultCollections));
+    renderCollections(defaultCollections);
+  }
+}
+
+function renderCollections(collections) {
+  const board = document.getElementById('collectionsBoard');
+  const emptyState = document.getElementById('emptyState');
+  
+  if (collections.length === 0) {
+    board.querySelectorAll('.collection-card').forEach(card => card.remove());
+    emptyState.style.display = 'block';
+    return;
+  }
+  
+  emptyState.style.display = 'none';
+  board.innerHTML = collections.map(col => `
+    <div class="collection-card" draggable="true" data-id="${col.id}" onclick="openCollection(${col.id})">
+      <div class="card-header">
+        <h3>${col.name}</h3>
+        <div class="card-actions" onclick="event.stopPropagation()">
+          <button class="btn-icon" onclick="editCollection(${col.id})">✏️</button>
+          <button class="btn-icon" onclick="deleteCollection(${col.id})">🗑️</button>
+        </div>
+      </div>
+      <div class="card-tags">
+        ${col.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+      </div>
+      <div class="card-stats">
+        <span>${col.items.length || 0} items</span>
+        <span>Updated ${formatDate(col.updated)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function formatDate(dateStr) {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = now - date;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  return date.toLocaleDateString();
+}
+
+function createCollection() {
+  document.getElementById('modalTitle').textContent = 'New Collection';
+  document.getElementById('collectionName').value = '';
+  document.getElementById('collectionTags').value = '';
+  document.getElementById('collectionDesc').value = '';
+  document.getElementById('collectionModal').style.display = 'flex';
+}
+
+function openCollection(id) {
+  const collections = JSON.parse(localStorage.getItem('collections') || '[]');
+  const collection = collections.find(c => c.id === id);
+  if (!collection) return;
+  
+  document.getElementById('modalTitle').textContent = collection.name;
+  document.getElementById('collectionName').value = collection.name;
+  document.getElementById('collectionTags').value = collection.tags.join(', ');
+  document.getElementById('collectionDesc').value = collection.description || '';
+  
+  // Render items
+  const itemsList = document.getElementById('itemsList');
+  if (collection.items.length === 0) {
+    itemsList.innerHTML = '<p class="empty-items">No items yet. Add items from search results.</p>';
+  } else {
+    itemsList.innerHTML = collection.items.map(item => `
+      <div class="item-card">
+        <h4>${item.title}</h4>
+        <p>${item.date}</p>
+        <a href="/reader?id=${item.id}" target="_blank">Read</a>
+        <button onclick="removeFromCollection(${id}, '${item.id}')">Remove</button>
+      </div>
+    `).join('');
+  }
+  
+  document.getElementById('collectionModal').style.display = 'flex';
+  document.getElementById('collectionModal').dataset.collectionId = id;
+}
+
+function saveCollection() {
+  const modal = document.getElementById('collectionModal');
+  const id = modal.dataset.collectionId;
+  const name = document.getElementById('collectionName').value;
+  const tags = document.getElementById('collectionTags').value.split(',').map(t => t.trim()).filter(t => t);
+  const desc = document.getElementById('collectionDesc').value;
+  
+  let collections = JSON.parse(localStorage.getItem('collections') || '[]');
+  
+  if (id) {
+    const existing = collections.find(c => c.id == id);
+    if (existing) {
+      existing.name = name;
+      existing.tags = tags;
+      existing.description = desc;
+      existing.updated = new Date().toISOString();
+    }
+  } else {
+    const newId = Math.max(...collections.map(c => c.id), 0) + 1;
+    collections.push({
+      id: newId,
+      name,
+      tags,
+      description: desc,
+      items: [],
+      updated: new Date().toISOString()
+    });
+  }
+  
+  localStorage.setItem('collections', JSON.stringify(collections));
+  loadCollections();
+  closeModal();
+}
+
+function deleteCollection(id) {
+  if (!confirm('Delete this collection?')) return;
+  let collections = JSON.parse(localStorage.getItem('collections') || '[]');
+  collections = collections.filter(c => c.id != id);
+  localStorage.setItem('collections', JSON.stringify(collections));
+  loadCollections();
+}
+
+function closeModal() {
+  document.getElementById('collectionModal').style.display = 'none';
+}
+
+function sortCollections() {
+  // Implement sorting
+  loadCollections();
+}
+
+// Load on page load
+loadCollections();
+</script>
+{% endblock %}
+

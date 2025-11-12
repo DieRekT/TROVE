@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Research Desk - Troveing{% endblock %}
+{% block content %}
+<div class="desk-layout">
+  <header class="desk-header">
+    <h1>💬 Research Desk</h1>
+    <p class="desk-subtitle">AI-powered research assistant with live citations</p>
+    <div class="desk-stats">
+      <span class="stat-item">Cost: <span id="cost">$0.00</span></span>
+      <span class="stat-item">Messages: <span id="messageCount">0</span></span>
+    </div>
+  </header>
+
+  <main class="desk-main">
+    <!-- Chat Messages -->
+    <div class="chat-messages" id="chatMessages">
+      <div class="message system">
+        <div class="message-content">
+          <p>Welcome to Research Desk! I can help you explore Trove archives, find sources, and answer research questions.</p>
+          <p>Try asking: "What are some good sources about early colonial history?" or "Help me find articles about gold rushes in Victoria."</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="chat-input-area">
+      <form id="chatForm" class="chat-form">
+        <textarea 
+          id="messageInput" 
+          placeholder="Ask a research question or request help finding sources..."
+          rows="2"
+          autofocus></textarea>
+        <button type="submit" class="btn-send" id="sendBtn">
+          <span>Send</span>
+          <span class="send-icon">➤</span>
+        </button>
+      </form>
+      <div class="input-hints">
+        <button class="hint-btn" onclick="insertHint('What sources exist about [topic]?')">Find Sources</button>
+        <button class="hint-btn" onclick="insertHint('Help me explore [topic]')">Explore</button>
+        <button class="hint-btn" onclick="insertHint('What are the key dates for [topic]?')">Timeline</button>
+        <button class="hint-btn" onclick="insertHint('Summarize [article ID]')">Summarize</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Citations Panel (Sidebar) -->
+  <aside class="citations-panel" id="citationsPanel">
+    <div class="panel-header">
+      <h3>📚 Live Citations</h3>
+      <button class="btn-panel-toggle" onclick="toggleCitations()">×</button>
+    </div>
+    <div class="citations-list" id="citationsList">
+      <p class="citations-empty">No citations yet. Citations will appear here as we discuss sources.</p>
+    </div>
+  </aside>
+</div>
+
+<script>
+let messageCount = 0;
+let costEstimate = 0;
+
+// Load chat history from sessionStorage
+function loadChatHistory() {
+  const history = sessionStorage.getItem('deskChatHistory');
+  if (history) {
+    const messages = JSON.parse(history);
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = '';
+    messages.forEach(msg => {
+      addMessage(msg.text, msg.role, msg.citations);
+    });
+    messageCount = messages.length;
+    updateStats();
+  }
+}
+
+// Save chat history
+function saveChatHistory() {
+  const messages = Array.from(document.querySelectorAll('.message')).map(el => ({
+    text: el.querySelector('.message-content').textContent,
+    role: el.classList.contains('user') ? 'user' : 'assistant',
+    citations: el.dataset.citations ? JSON.parse(el.dataset.citations) : []
+  }));
+  sessionStorage.setItem('deskChatHistory', JSON.stringify(messages));
+}
+
+function addMessage(text, role = 'assistant', citations = []) {
+  const container = document.getElementById('chatMessages');
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `message ${role}`;
+  if (citations.length > 0) {
+    messageDiv.dataset.citations = JSON.stringify(citations);
+  }
+  
+  const content = document.createElement('div');
+  content.className = 'message-content';
+  content.textContent = text;
+  
+  // Add read aloud button for assistant/system messages
+  if (role === 'assistant' || role === 'system') {
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'message-actions';
+    
+    const readAloudBtn = window.createReadAloudButton(content, { className: 'btn-read-aloud-message' });
+    readAloudBtn.innerHTML = '<span class="read-icon">🔊</span>';
+    readAloudBtn.title = 'Read aloud (Space)';
+    readAloudBtn.style.marginLeft = 'auto';
+    
+    actionsDiv.appendChild(readAloudBtn);
+    messageDiv.appendChild(content);
+    messageDiv.appendChild(actionsDiv);
+  } else {
+    messageDiv.appendChild(content);
+  }
+  
+  if (role === 'assistant' && citations.length > 0) {
+    const citationsEl = document.createElement('div');
+    citationsEl.className = 'message-citations';
+    citationsEl.innerHTML = `<strong>Sources:</strong> ${citations.map(c => `<a href="${c.url}" target="_blank">${c.title}</a>`).join(', ')}`;
+    messageDiv.appendChild(citationsEl);
+    updateCitationsPanel(citations);
+  }
+  
+  container.appendChild(messageDiv);
+  container.scrollTop = container.scrollHeight;
+  messageCount++;
+  updateStats();
+  saveChatHistory();
+}
+
+function updateCitationsPanel(citations) {
+  const panel = document.getElementById('citationsList');
+  if (panel.querySelector('.citations-empty')) {
+    panel.innerHTML = '';
+  }
+  
+  citations.forEach(citation => {
+    const item = document.createElement('div');
+    item.className = 'citation-item';
+    item.innerHTML = `
+      <a href="${citation.url}" target="_blank" class="citation-link">${citation.title}</a>
+      <span class="citation-meta">${citation.date || ''}</span>
+    `;
+    panel.appendChild(item);
+  });
+}
+
+function updateStats() {
+  document.getElementById('messageCount').textContent = messageCount;
+  document.getElementById('cost').textContent = `$${(costEstimate).toFixed(2)}`;
+}
+
+function toggleCitations() {
+  const panel = document.getElementById('citationsPanel');
+  panel.classList.toggle('collapsed');
+}
+
+function insertHint(text) {
+  document.getElementById('messageInput').value = text;
+  document.getElementById('messageInput').focus();
+}
+
+// Chat form submission
+document.getElementById('chatForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('messageInput');
+  const message = input.value.trim();
+  if (!message) return;
+  
+  // Add user message
+  addMessage(message, 'user');
+  input.value = '';
+  
+  // Show loading
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'message assistant loading';
+  loadingDiv.innerHTML = '<div class="message-content">Thinking...</div>';
+  document.getElementById('chatMessages').appendChild(loadingDiv);
+  
+  try {
+    // Get recent article IDs from localStorage (tracked when viewing articles)
+    const recentArticles = JSON.parse(localStorage.getItem('recentArticles') || '[]');
+    const articleIds = recentArticles.slice(0, 10).map(a => a.id).filter(Boolean);
+    
+    // Send to Archive Detective chat endpoint with article context
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        message: message,
+        article_ids: articleIds.length > 0 ? articleIds : null
+      })
+    });
+    
+    const data = await response.json();
+    loadingDiv.remove();
+    
+    if (data.ok) {
+      // Estimate cost (rough: $0.001 per message)
+      costEstimate += 0.001;
+      updateStats();
+      
+      // Extract any citations from response
+      const citations = data.citations || [];
+      const replyText = data.reply || data.say || 'No response';
+      addMessage(replyText, 'assistant', citations);
+      
+      // If there's a redirect, show it
+      if (data.redirect) {
+        setTimeout(() => {
+          showToast('Redirecting to search results...', 'info');
+          window.location.href = data.redirect;
+        }, 1000);
+      }
+    } else {
+      showToast(data.error || 'An error occurred', 'error');
+      addMessage(data.error || 'Sorry, I encountered an error.', 'assistant');
+    }
+  } catch (error) {
+    loadingDiv.remove();
+    addMessage('Sorry, I encountered an error. Please try again.', 'assistant');
+    console.error('Chat error:', error);
+  }
+});
+
+// Load history on page load
+loadChatHistory();
+</script>
+{% endblock %}
+

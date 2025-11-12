@@ -1,0 +1,277 @@
+/* Voice Input Button Styles - Enhanced with Best Practices */
+
+.input-with-voice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.input-with-voice input,
+.input-with-voice textarea {
+  flex: 1;
+  padding-right: 2.5rem !important; /* Make room for voice button */
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Visual feedback when listening */
+.input-with-voice.voice-listening input,
+.input-with-voice.voice-listening textarea {
+  border-color: var(--brand, #6699cc);
+  box-shadow: 0 0 0 2px rgba(102, 153, 204, 0.1);
+  animation: voice-pulse 2s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(102, 153, 204, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(102, 153, 204, 0.2);
+  }
+}
+
+.voice-input-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 6px);
+  transition: all var(--transition-fast, 150ms ease);
+  z-index: 10;
+  color: var(--muted, #97a0ad);
+  font-size: 1.1rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  outline: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.voice-input-btn:hover {
+  background-color: rgba(102, 153, 204, 0.15);
+  color: var(--brand, #6699cc);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.voice-input-btn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.voice-input-btn:focus-visible {
+  outline: 2px solid var(--brand, #6699cc);
+  outline-offset: 2px;
+}
+
+/* Listening state */
+.voice-input-btn.listening {
+  background: linear-gradient(135deg, var(--error, #ef4444), #ff6b6b);
+  color: white;
+  animation: pulse-listening 1.5s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+}
+
+.voice-input-btn.listening:hover {
+  background: linear-gradient(135deg, #dc2626, var(--error, #ef4444));
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.6);
+}
+
+.voice-input-btn.listening:focus-visible {
+  outline-color: var(--error, #ef4444);
+}
+
+/* Permission denied state */
+.voice-input-btn.permission-denied {
+  opacity: 0.5;
+  cursor: not-allowed;
+  position: relative;
+}
+
+.voice-input-btn.permission-denied::after {
+  content: '⚠️';
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  font-size: 0.75rem;
+  background: var(--error, #ef4444);
+  border-radius: 50%;
+  width: 1rem;
+  height: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes pulse-listening {
+  0%, 100% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-50%) scale(1.05);
+  }
+}
+
+.voice-icon {
+  display: inline-block;
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.voice-input-btn:hover .voice-icon {
+  transform: scale(1.1);
+}
+
+.voice-input-btn.listening .voice-icon {
+  animation: pulse-icon 1s ease-in-out infinite;
+}
+
+@keyframes pulse-icon {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+/* Adjust for textareas */
+.input-with-voice textarea {
+  padding-right: 2.5rem !important;
+}
+
+.input-with-voice textarea + .voice-input-btn {
+  top: 0.5rem;
+  transform: none;
+  align-self: flex-start;
+}
+
+.input-with-voice textarea + .voice-input-btn.listening {
+  animation: pulse-listening-textarea 1.5s ease-in-out infinite;
+  transform: none;
+}
+
+@keyframes pulse-listening-textarea {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+/* Loading state (when initializing) */
+.voice-input-btn.loading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.voice-input-btn.loading .voice-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dark mode is default, but ensure light mode compatibility */
+@media (prefers-color-scheme: light) {
+  .voice-input-btn {
+    color: var(--muted, #666);
+  }
+  
+  .voice-input-btn:hover {
+    background-color: rgba(102, 153, 204, 0.1);
+    color: var(--brand, #0066cc);
+  }
+  
+  .input-with-voice.voice-listening input,
+  .input-with-voice.voice-listening textarea {
+    border-color: var(--brand, #0066cc);
+    box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .voice-input-btn {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+    right: 0.25rem;
+    padding: 0.375rem;
+  }
+  
+  .input-with-voice input,
+  .input-with-voice textarea {
+    padding-right: 2.25rem !important;
+  }
+  
+  .voice-input-btn:hover {
+    transform: translateY(-50%) scale(1.05);
+  }
+  
+  .input-with-voice textarea + .voice-input-btn {
+    top: 0.375rem;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .voice-input-btn {
+    border: 2px solid currentColor;
+  }
+  
+  .voice-input-btn.listening {
+    border-color: var(--error, #ef4444);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .voice-input-btn,
+  .voice-input-btn.listening,
+  .voice-icon,
+  .input-with-voice.voice-listening input,
+  .input-with-voice.voice-listening textarea {
+    animation: none;
+    transition: none;
+  }
+  
+  .voice-input-btn:hover {
+    transform: translateY(-50%);
+  }
+  
+  .input-with-voice textarea + .voice-input-btn:hover {
+    transform: none;
+  }
+}
+
+/* Screen reader only text */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

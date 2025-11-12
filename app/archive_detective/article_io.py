@@ -1,11 +1,51 @@
 from __future__ import annotations
 
 import re
+import logging
 from typing import Any
 
 import httpx
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+
+def _clean_scraped_text(text: str) -> str:
+    """
+    Clean scraped HTML text, preserving paragraph breaks.
+    
+    Args:
+        text: Raw text (may contain HTML)
+        
+    Returns:
+        Cleaned text with preserved paragraph breaks
+    """
+    if not text:
+        return ""
+    
+    # First, convert common HTML line breaks to newlines
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<p[^>]*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</div>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<div[^>]*>", "\n", text, flags=re.IGNORECASE)
+    
+    # Remove other HTML tags
+    text = re.sub(r"<[^>]+>", " ", text)
+    
+    # Normalize whitespace but preserve paragraph breaks
+    # Replace multiple spaces/tabs with single space (but keep newlines)
+    text = re.sub(r"[ \t]+", " ", text)  # Multiple spaces/tabs to single space
+    # Replace 3+ newlines with double newline (paragraph break)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    # Remove leading/trailing whitespace from each line
+    lines = [line.strip() for line in text.split('\n')]
+    text = '\n'.join(lines)
+    # Final cleanup: remove empty lines at start/end
+    text = text.strip()
+    
+    return text
 
 
 def extract_article_id_from_url(url_or_id: str) -> str | None:
@@ -83,6 +123,7 @@ async def fetch_item_text(item_id: str, trove_url: str | None = None) -> dict[st
 
     # Try each strategy
     last_error = None
+    up = None
     for strategy_type, identifier in strategies:
         try:
             if strategy_type == "url":
@@ -98,16 +139,15 @@ async def fetch_item_text(item_id: str, trove_url: str | None = None) -> dict[st
                     # Try to use URL as-is (might work for some endpoints)
                     params = {"url": identifier, "encoding": "json", "include": "articleText,workText,fulltext"}
             else:
-                # Use ID
-                params = {"id": identifier, "encoding": "json", "include": "articleText,workText,fulltext"}
-            
-            url = f"{settings.trove_base_url}/record"
-            async with httpx.AsyncClient(timeout=30.0) as c:
-                r = await c.get(url, params=params, headers=headers)
-                r.raise_for_status()
-                up = r.json()
-                # If we got here, the fetch worked - break out of loop
-                break
+                # Use ID - use /record endpoint directly (best for fetching specific articles)
+                params = {"id": identifier, "encoding": "json", "include": "articleText,workText,fulltext,links"}
+                url = f"{settings.trove_base_url}/record"
+                async with httpx.AsyncClient(timeout=30.0) as c:
+                    r = await c.get(url, params=params, headers=headers)
+                    r.raise_for_status()
+                    up = r.json()
+                    # If we got here, the fetch worked - break out of loop
+                    break
         except httpx.HTTPStatusError as e:
             last_error = e
             if e.response.status_code == 404:
@@ -122,22 +162,94 @@ async def fetch_item_text(item_id: str, trove_url: str | None = None) -> dict[st
             last_error = e
             continue
     else:
-        # All strategies failed
-        if isinstance(last_error, httpx.HTTPStatusError):
-            if last_error.response.status_code == 404:
-                return {"ok": False, "error": "Article not found or full text not available. This article may only have a snippet available."}
-            return {"ok": False, "error": f"Trove API error: {last_error.response.status_code}"}
-        elif isinstance(last_error, httpx.RequestError):
-            return {"ok": False, "error": f"Network error: {str(last_error)}"}
+        # All API strategies failed - try scraping before giving up
+        # If we have a URL (from trove_url parameter), try scraping as a fallback
+        scrape_url = trove_url
+        # If no URL provided, try to construct one from the article ID
+        if not scrape_url and item_id:
+            # Try to construct Trove URL from article ID
+            if item_id.isdigit():
+                scrape_url = f"https://nla.gov.au/nla.news-article{item_id}"
+            elif "nla.news-article" in item_id:
+                article_id = extract_article_id_from_url(item_id)
+                if article_id:
+                    scrape_url = f"https://nla.gov.au/nla.news-article{article_id}"
+        
+        if scrape_url:
+            try:
+                logger.info(f"📄 API fetch failed, attempting to scrape from {scrape_url}")
+                scraped_text = await _scrape_article_text(scrape_url)
+                if scraped_text and len(scraped_text) > 100:
+                    # We got text from scraping, so we can continue with that
+                    # Create a minimal response structure
+                    up = None  # None indicates scraping was used (API failed)
+                    # Extract basic info from URL if possible
+                    article_id = extract_article_id_from_url(scrape_url) or item_id
+                    # Use scraped text as the text source
+                    text = scraped_text
+                    snippet = ""  # No snippet from scraping
+                    # Try to extract title from scraped text or use default
+                    title = scraped_text.split('\n')[0][:100] if scraped_text else "Untitled"
+                    date = ""
+                    url = scrape_url  # Set url for later processing
+                    source = ""
+                    # Set flag to indicate scraping was used
+                    scraped_successfully = True
+                    # Continue processing with scraped text
+                    logger.info(f"✅ Scraping succeeded, using scraped text ({len(text)} chars)")
+                    # Fall through to text processing below (skip the find_first calls since up is None)
+                else:
+                    # Scraping also failed or returned insufficient text
+                    if isinstance(last_error, httpx.HTTPStatusError):
+                        if last_error.response.status_code == 404:
+                            return {"ok": False, "error": "Article not found or full text not available. This article may only have a snippet available."}
+                        return {"ok": False, "error": f"Trove API error: {last_error.response.status_code}"}
+                    elif isinstance(last_error, httpx.RequestError):
+                        return {"ok": False, "error": f"Network error: {str(last_error)}"}
+                    else:
+                        return {"ok": False, "error": f"Unable to fetch article. Tried API and scraping but all failed."}
+            except Exception as scrape_err:
+                # Scraping failed too, return API error
+                logger.debug(f"Scraping also failed: {scrape_err}")
+                if isinstance(last_error, httpx.HTTPStatusError):
+                    if last_error.response.status_code == 404:
+                        return {"ok": False, "error": "Article not found or full text not available. This article may only have a snippet available."}
+                    return {"ok": False, "error": f"Trove API error: {last_error.response.status_code}"}
+                elif isinstance(last_error, httpx.RequestError):
+                    return {"ok": False, "error": f"Network error: {str(last_error)}"}
+                else:
+                    return {"ok": False, "error": f"Unable to fetch article. Tried API and scraping but all failed."}
         else:
-            return {"ok": False, "error": f"Unable to fetch article. Tried multiple strategies but all failed."}
+            # No URL to scrape, return API error
+            if isinstance(last_error, httpx.HTTPStatusError):
+                if last_error.response.status_code == 404:
+                    return {"ok": False, "error": "Article not found or full text not available. This article may only have a snippet available."}
+                return {"ok": False, "error": f"Trove API error: {last_error.response.status_code}"}
+            elif isinstance(last_error, httpx.RequestError):
+                return {"ok": False, "error": f"Network error: {str(last_error)}"}
+            else:
+                return {"ok": False, "error": f"Unable to fetch article. Tried multiple strategies but all failed."}
 
+    # Check if we scraped (indicated by up = None set in scraping fallback)
+    # When scraping succeeds, we set up = None and text/title/url directly
+    scraped_flag = (up is None)
+    
     # Try pull common fields
-    title = ""
-    date = ""
-    url = ""
-    text = ""
-    snippet = ""
+    # Initialize with empty values (will be set from API or already set from scraping)
+    if not scraped_flag:
+        # Not scraped - initialize empty (will be filled from API)
+        title = ""
+        date = ""
+        url = ""
+        text = ""
+        snippet = ""
+    else:
+        # We scraped - text/title/url are already set in scraping block above
+        # Just ensure URL is set if not already
+        if not url and trove_url:
+            url = trove_url
+        if not snippet:
+            snippet = ""
 
     # generic hunt
     def find_first(d: Any, keys: list[str]) -> str:
@@ -156,18 +268,130 @@ async def fetch_item_text(item_id: str, trove_url: str | None = None) -> dict[st
                     return s
         return ""
 
-    title = find_first(up, ["title", "heading", "headingTitle"])
-    date = find_first(up, ["date", "issued", "publicationDate", "issuedTo"])
-    url = find_first(up, ["troveUrl", "identifier", "url"])
-    text = find_first(up, ["articleText", "workText", "fulltext", "text"])
-    snippet = find_first(up, ["snippet", "summary", "abstract"])
+    # Only try to extract from API response if we have one (up is not None)
+    # If we scraped, skip API extraction entirely (up is None)
+    if not scraped_flag and up is not None:
+        title = find_first(up, ["title", "heading", "headingTitle"])
+        date = find_first(up, ["date", "issued", "publicationDate", "issuedTo"])
+        url = find_first(up, ["troveUrl", "identifier", "url"])
+        
+        # Extract snippet from original response before potentially reassigning up
+        # This ensures we don't miss snippet data if it exists at root level but not in nested records
+        snippet = find_first(up, ["snippet", "summary", "abstract"])
+        
+        # Try to find full text - check multiple field names and nested structures
+        # First check if response is nested in a "record" key (common Trove API structure)
+        original_up = up  # Keep reference to original for consistent data extraction
+        if isinstance(up, dict) and "record" in up:
+            record_data = up["record"]
+            if isinstance(record_data, dict):
+                up = record_data
+            elif isinstance(record_data, list) and len(record_data) > 0:
+                up = record_data[0]
+        
+        # Try to find full text - check multiple field names and nested structures
+        # Priority: articleText > workText > fulltext > text
+        text = find_first(up, [
+            "articleText", "workText", "fulltext", "text", "fullText",
+            "articleText.value", "workText.value", "fulltext.value",
+            "text.value", "content", "body", "description"
+        ])
+        
+        # If not found at top level, check in work records (common location for articleText)
+        if not text or len(text) < 100:
+            work = up.get("work") or []
+            if isinstance(work, dict):
+                work = [work]
+            for w in work:
+                if isinstance(w, dict):
+                    work_text = find_first(w, [
+                        "articleText", "workText", "fulltext", "text", "fullText",
+                        "articleText.value", "workText.value", "fulltext.value",
+                        "text.value", "content", "body"
+                    ])
+                    if work_text and len(work_text) > len(text or ""):
+                        text = work_text
+                    
+                    # Also check nested articleText in work
+                    if not text or len(text) < 100:
+                        # Check if work has an article nested inside
+                        work_article = w.get("article") or []
+                        if isinstance(work_article, dict):
+                            work_article = [work_article]
+                        for wa in work_article:
+                            if isinstance(wa, dict):
+                                wa_text = find_first(wa, ["articleText", "text", "fulltext"])
+                                if wa_text and len(wa_text) > len(text or ""):
+                                    text = wa_text
+        
+        # Check in contributor records
+        if not text:
+            contributor = up.get("contributor") or []
+            if isinstance(contributor, dict):
+                contributor = [contributor]
+            for c in contributor:
+                if isinstance(c, dict):
+                    contrib_text = find_first(c, [
+                        "articleText", "workText", "fulltext", "text", "fullText",
+                        "articleText.value", "workText.value", "fulltext.value",
+                        "text.value", "content", "body"
+                    ])
+                    if contrib_text and len(contrib_text) > len(text or ""):
+                        text = contrib_text
+        
+        # Also check for snippet in nested record if not found in original
+        # Prefer longer snippet if both exist
+        nested_snippet = find_first(up, ["snippet", "summary", "abstract"])
+        if nested_snippet and len(nested_snippet) > len(snippet or ""):
+            snippet = nested_snippet
+    elif not scraped_flag:
+        # No API response and no scraping, use trove_url if available
+        if not url and trove_url:
+            url = trove_url
+        snippet = ""
 
-    # sanitize
-    if not text:
-        text = snippet or ""
-    # strip HTML tags if present
-    text = re.sub(r"<[^>]+>", " ", text or "")
-    text = re.sub(r"\s+", " ", text).strip()
+    # If we don't have full text or it's too short, try scraping from the HTML page
+    # Scrape if: no text OR text is short (< 500 chars, likely just a snippet)
+    # Full articles are usually 500+ characters, so anything shorter is likely incomplete
+    should_scrape = url and (not text or len(text) < 500)
+    if should_scrape:
+        try:
+            logger.info(f"📄 Attempting to scrape full text from {url} (API text: {len(text) if text else 0} chars)")
+            scraped_text = await _scrape_article_text(url)
+            if scraped_text and len(scraped_text) > 100:
+                # Use scraped text if it's longer than what we have
+                # Full articles should be significantly longer than snippets
+                if not text or len(scraped_text) > len(text) * 1.2:  # At least 20% longer
+                    old_len = len(text) if text else 0
+                    text = scraped_text
+                    logger.info(f"✅ Using scraped text ({len(text)} chars, was {old_len} chars) from {url}")
+        except Exception as scrape_err:
+            # Log but don't fail - scraping is a fallback
+            logger.debug(f"Scraping failed for {url}: {scrape_err}")
+    
+    # Prioritize full text over snippet - only use snippet if we have no text at all
+    # or if text is extremely short (likely incomplete)
+    if not text or (text and len(text) < 50):
+        text = snippet or text or ""
+    
+    # If we have both text and snippet, prefer the longer one (likely more complete)
+    # But only use snippet if it's significantly longer (don't replace good scraped text)
+    if snippet and len(snippet) > len(text or "") * 1.5:
+        text = snippet
+        logger.debug(f"Using snippet ({len(snippet)} chars) over text ({len(text)} chars)")
+    
+    # strip HTML tags if present, but preserve line breaks
+    if text:
+        # First, convert common HTML line breaks to newlines
+        text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"<p[^>]*>", "", text, flags=re.IGNORECASE)
+        # Remove other HTML tags
+        text = re.sub(r"<[^>]+>", " ", text)
+        # Normalize whitespace but preserve paragraph breaks
+        text = re.sub(r"[ \t]+", " ", text)  # Multiple spaces/tabs to single space
+        text = re.sub(r"\n{3,}", "\n\n", text)  # Multiple newlines to double newline
+        text = text.strip()
 
     # Try to extract image URL from the response - multiple strategies
     image_url = find_first(up, ["imageUrl", "image", "thumbnail", "fulltextUrl", "identifier.value"])
@@ -240,4 +464,83 @@ async def fetch_item_text(item_id: str, trove_url: str | None = None) -> dict[st
         "text": text,
         "image_url": image_url,
         "source": find_first(up, ["source", "publisher", "contributor", "newspaper"]),
+        "snippet": snippet,  # Also return snippet for reference
     }
+
+
+async def _scrape_article_text(url: str) -> str | None:
+    """
+    Scrape full article text from Trove HTML page.
+    Uses trafilatura (primary) or readability-lxml (fallback).
+    
+    Args:
+        url: Trove article URL
+        
+    Returns:
+        Extracted text or None if scraping fails
+    """
+    if not url:
+        return None
+    
+    # Only try scraping Trove URLs
+    if "nla.gov.au" not in url and "trove.nla.gov.au" not in url:
+        return None
+    
+    try:
+        # Fetch HTML page
+        async with httpx.AsyncClient(timeout=20.0, headers={"User-Agent": "ArchiveDetective/1.0"}) as client:
+            response = await client.get(url, follow_redirects=True)
+            response.raise_for_status()
+            html = response.text
+        
+        # Try trafilatura first (better for news articles)
+        try:
+            import trafilatura
+            extracted = trafilatura.extract(
+                html,
+                include_comments=False,
+                include_tables=False,
+                include_images=False,
+                include_links=False,
+            )
+            if extracted:
+                # Clean HTML but preserve paragraph breaks
+                text = _clean_scraped_text(extracted)
+                if text and len(text) > 100:
+                    logger.info(f"✅ Successfully scraped text with trafilatura from {url} ({len(text)} chars)")
+                    return text
+        except ImportError:
+            logger.debug("trafilatura not available, trying readability")
+        except Exception as e:
+            logger.debug(f"trafilatura extraction failed: {e}")
+        
+        # Fallback to readability-lxml
+        try:
+            from readability import Document
+            from lxml import html as lhtml
+            doc = Document(html)
+            body = doc.summary(html_partial=True)
+            tree = lhtml.fromstring(body)
+            # Extract text preserving structure
+            text = tree.text_content() if hasattr(tree, 'text_content') else tree.xpath('string()')
+            # Clean HTML but preserve paragraph breaks
+            text = _clean_scraped_text(text)
+            if text and len(text) > 100:
+                logger.info(f"✅ Successfully scraped text with readability from {url} ({len(text)} chars)")
+                return text
+        except ImportError:
+            logger.debug("readability-lxml not available")
+        except Exception as e:
+            logger.debug(f"readability extraction failed: {e}")
+        
+        return None
+        
+    except httpx.TimeoutException:
+        logger.debug(f"Timeout scraping {url}")
+        return None
+    except httpx.HTTPStatusError as e:
+        logger.debug(f"HTTP {e.response.status_code} when scraping {url}")
+        return None
+    except Exception as e:
+        logger.debug(f"Error scraping {url}: {e}")
+        return None

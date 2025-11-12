@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Reader - Troveing{% endblock %}
+{% block page_title %}Article Reader{% endblock %}
 {% block content %}
 <div class="reader-layout">
   <!-- Citation Bar -->
@@ -16,6 +17,9 @@
         {% if article.page %}
         <span class="citation-page">📄 Page {{ article.page }}</span>
         {% endif %}
+        <span id="ttsHealthBadge" style="display: inline-block; margin-left: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.85rem; background: #f0f0f0; color: #666;">
+          🔊 TTS: Checking...
+        </span>
       </div>
       {% if article.url %}
       <a href="{{ article.url }}" target="_blank" class="citation-link">View on Trove 🔗</a>
@@ -27,6 +31,9 @@
       </button>
       <button class="btn-citation" onclick="copyCitation()">📋 Copy Citation</button>
       <button class="btn-citation" onclick="addToCollection()">📚 Add to Collection</button>
+      {% if article.title %}
+      <a href="/research?seed={{ article.title|urlencode }}" class="btn-citation" title="Research this article">🔎 Research this</a>
+      {% endif %}
     </div>
   </header>
 
@@ -35,7 +42,7 @@
     <!-- Left: Text Content -->
     <section class="reader-text">
       <div class="reader-controls">
-        <button class="btn-listen" id="listenBtn" onclick="toggleListen()">
+        <button class="btn-listen" id="listenBtn" onclick="toggleListen()" title="Read aloud (Press 's' or 'l')">
           <span id="listenIcon">🔊</span>
           <span id="listenText">Listen</span>
         </button>
@@ -48,6 +55,7 @@
         <button class="btn-control" onclick="explainSelected()">Explain</button>
         <button class="btn-control" onclick="defineSelected()">Define</button>
         <button class="btn-control" onclick="translateSelected()">Translate</button>
+        <button class="btn-control" id="summarizeBtn" onclick="summarizeArticle()">📝 Summarize</button>
       </div>
       
       <div class="text-content" id="textContent">
@@ -56,6 +64,8 @@
       
       <!-- Inline Explanations -->
       <div id="inlineExplanations" class="inline-explanations"></div>
+
+      <div id="summaryPanel" class="summary-panel" style="display: none;"></div>
     </section>
 
     <!-- Right: Original Scan -->
@@ -106,6 +116,37 @@
 
 <script>
 // Track article when reader loads (to SQLite context store)
+// Check TTS health
+(async function checkTTSHealth() {
+  const badge = document.getElementById('ttsHealthBadge');
+  if (!badge) return;
+  
+  try {
+    const response = await fetch('/api/tts/health');
+    const data = await response.json();
+    if (data && data.ok) {
+      badge.textContent = '✅ TTS: Ready';
+      badge.style.background = '#d4edda';
+      badge.style.color = '#155724';
+    } else {
+      badge.textContent = '❌ TTS: Unavailable';
+      badge.style.background = '#f8d7da';
+      badge.style.color = '#721c24';
+    }
+  } catch (error) {
+    // Check browser support as fallback
+    if ('speechSynthesis' in window) {
+      badge.textContent = '✅ TTS: Browser Ready';
+      badge.style.background = '#d4edda';
+      badge.style.color = '#155724';
+    } else {
+      badge.textContent = '❌ TTS: Not Supported';
+      badge.style.background = '#f8d7da';
+      badge.style.color = '#721c24';
+    }
+  }
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   const articleId = new URLSearchParams(window.location.search).get('id');
   if (!articleId) return;
@@ -142,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 let selectedText = '';
+let isSummarizing = false;
 
 // Image URL fallback strategy - try multiple Trove image URL formats
 function tryNextImageUrl(img, baseUrl) {
@@ -304,6 +346,101 @@ function translateSelected() {
   .catch(err => console.error(err));
 }
 
+async function summarizeArticle() {
+  const articleId = new URLSearchParams(window.location.search).get('id');
+  const articleUrl = new URLSearchParams(window.location.search).get('url');
+  const articleTitle = new URLSearchParams(window.location.search).get('title');
+  const articleDate = new URLSearchParams(window.location.search).get('date');
+  const articleSource = new URLSearchParams(window.location.search).get('source');
+  const btn = document.getElementById('summarizeBtn');
+  if (!articleId) {
+    showToast('No article ID found', 'error');
+    return;
+  }
+
+  if (!btn || isSummarizing) {
+    return;
+  }
+
+  const originalLabel = btn.innerHTML;
+  isSummarizing = true;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Summarizing...';
+
+  const textContentEl = document.getElementById('textContent');
+  const rawFallback = textContentEl ? (textContentEl.innerText || textContentEl.textContent || '') : '';
+  const fallbackText = rawFallback.length > 8000 ? rawFallback.slice(0, 8000) : rawFallback;
+
+  // Build URL with query parameters for metadata
+  let url = `/api/article/${encodeURIComponent(articleId)}/summarize`;
+  const params = new URLSearchParams();
+  if (articleUrl) params.append('url', articleUrl);
+  if (articleTitle) params.append('title', articleTitle);
+  if (articleDate) params.append('date', articleDate);
+  if (articleSource) params.append('source', articleSource);
+  if (params.toString()) {
+    url += '?' + params.toString();
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ fallback_text: fallbackText })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.ok) {
+      throw new Error(data.error || 'Failed to generate summary');
+    }
+    renderSummary(data);
+    showToast('Summary ready', 'success');
+  } catch (err) {
+    console.error('Error summarizing article:', err);
+    showToast(`Failed to summarize: ${err.message || err}`, 'error');
+  } finally {
+    isSummarizing = false;
+    btn.disabled = false;
+    btn.innerHTML = originalLabel;
+  }
+}
+
+function renderSummary(data) {
+  const panel = document.getElementById('summaryPanel');
+  if (!panel) {
+    return;
+  }
+
+  const summaryText = (data.summary && typeof data.summary === 'string')
+    ? data.summary
+    : data.summary_text || '';
+
+  const bullets = Array.isArray(data.bullets) ? data.bullets.filter(Boolean) : [];
+
+  const bulletsMarkup = bullets.length
+    ? `<ul>${bullets.map((item) => `<li>${item}</li>`).join('')}</ul>`
+    : '';
+
+  panel.innerHTML = `
+    <div class="summary-header">
+      <strong>Article Summary</strong>
+      <button class="btn-inline" onclick="summarizeArticle()" title="Refresh summary">↻ Refresh</button>
+    </div>
+    <div class="summary-body">
+      ${summaryText ? `<p>${summaryText}</p>` : ''}
+      ${bulletsMarkup}
+      ${!summaryText && !bulletsMarkup ? '<p>No summary available.</p>' : ''}
+    </div>
+  `;
+
+  panel.style.display = 'block';
+}
+
 function showInlineExplanation(originalText, explanation, type) {
   const container = document.getElementById('inlineExplanations');
   const explanationEl = document.createElement('div');
@@ -458,14 +595,126 @@ function fullscreenScan() {
   }
 }
 
+// Navigation functions for arrow keys
+async function navigateToPreviousArticle() {
+  const currentId = new URLSearchParams(window.location.search).get('id');
+  if (!currentId) return;
+  
+  try {
+    // Get recent articles from context
+    const response = await fetch('/api/context');
+    const data = await response.json();
+    
+    if (!data.ok || !data.items || data.items.length === 0) {
+      if (typeof showToast === 'function') {
+        showToast('No recent articles found for navigation', 'info');
+      }
+      return;
+    }
+    
+    // Find current article index
+    const articles = data.items;
+    const currentIndex = articles.findIndex(a => a.trove_id === currentId || a.id === currentId);
+    
+    if (currentIndex === -1 || currentIndex === 0) {
+      if (typeof showToast === 'function') {
+        showToast('No previous article available', 'info');
+      }
+      return;
+    }
+    
+    // Navigate to previous article
+    const prevArticle = articles[currentIndex - 1];
+    const prevId = prevArticle.trove_id || prevArticle.id;
+    if (prevId) {
+      window.location.href = `/reader?id=${encodeURIComponent(prevId)}`;
+    }
+  } catch (error) {
+    console.error('Navigation error:', error);
+    if (typeof showToast === 'function') {
+      showToast('Could not navigate to previous article', 'error');
+    }
+  }
+}
+
+async function navigateToNextArticle() {
+  const currentId = new URLSearchParams(window.location.search).get('id');
+  if (!currentId) return;
+  
+  try {
+    // Get recent articles from context
+    const response = await fetch('/api/context');
+    const data = await response.json();
+    
+    if (!data.ok || !data.items || !data.items.length === 0) {
+      if (typeof showToast === 'function') {
+        showToast('No recent articles found for navigation', 'info');
+      }
+      return;
+    }
+    
+    // Find current article index
+    const articles = data.items;
+    const currentIndex = articles.findIndex(a => a.trove_id === currentId || a.id === currentId);
+    
+    if (currentIndex === -1 || currentIndex >= articles.length - 1) {
+      if (typeof showToast === 'function') {
+        showToast('No next article available', 'info');
+      }
+      return;
+    }
+    
+    // Navigate to next article
+    const nextArticle = articles[currentIndex + 1];
+    const nextId = nextArticle.trove_id || nextArticle.id;
+    if (nextId) {
+      window.location.href = `/reader?id=${encodeURIComponent(nextId)}`;
+    }
+  } catch (error) {
+    console.error('Navigation error:', error);
+    if (typeof showToast === 'function') {
+      showToast('Could not navigate to next article', 'error');
+    }
+  }
+}
+
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'l' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+  // Ignore shortcuts when typing in inputs
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+    return;
+  }
+  
+  // Prevent default for our shortcuts
+  if (['p', 'c', 's', 'l', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
     e.preventDefault();
+  }
+  
+  // p - Pin/unpin article
+  if (e.key === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    togglePin();
+  }
+  
+  // c - Copy citation
+  if (e.key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    copyCitation();
+  }
+  
+  // s or l - Toggle speak/listen (TTS)
+  if ((e.key === 's' || e.key === 'l') && !e.ctrlKey && !e.metaKey && !e.altKey) {
     toggleListen();
   }
+  
+  // ←/→ - Navigate to previous/next article (if available in context)
+  if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.metaKey) {
+    navigateToPreviousArticle();
+  }
+  if (e.key === 'ArrowRight' && !e.ctrlKey && !e.metaKey) {
+    navigateToNextArticle();
+  }
+  
+  // Ctrl+D - Open desk (existing)
   if (e.key === 'd' && e.ctrlKey) {
-    e.preventDefault();
     openDesk();
   }
 });

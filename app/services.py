@@ -5,7 +5,13 @@ from typing import Any
 
 from app.models import TroveRecord
 from app.trove_client import TroveClient
-from app.utils import safe_get
+# Import safe_get from utils.py file (not utils package)
+import importlib.util
+import os
+spec = importlib.util.spec_from_file_location("app_utils", os.path.join(os.path.dirname(__file__), "utils.py"))
+app_utils = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(app_utils)
+safe_get = app_utils.safe_get
 
 
 class TroveRecordNormalizer:
@@ -53,6 +59,15 @@ class TroveRecordNormalizer:
         """
         if not trove_page_url:
             return None, None
+        # Expect URLs like https://nla.gov.au/nla.news-page16272168
+        match = re.search(r"(nla\.news-page\d+)", trove_page_url)
+        if match:
+            page_id = match.group(1)
+            thumb_url = f"/api/trove/page-thumbnail/{page_id}?size=thumb"
+            large_url = f"/api/trove/page-thumbnail/{page_id}?size=large"
+            return thumb_url, large_url
+
+        # Fallback to legacy pattern (may return HTML shell rather than image)
         small = f"{trove_page_url}/image?hei=180"
         large = f"{trove_page_url}/image?hei=700"
         return small, large
@@ -129,6 +144,19 @@ class TroveRecordNormalizer:
         return TroveRecord(**norm_data)
 
 
+async def refresh_article_images(
+    article_id: str,
+    request: Any = None,
+    force: bool = False,
+    allow_generation: bool = False,
+) -> dict[str, Any]:
+    """
+    Stub function for refreshing article images.
+    Returns empty images list for now.
+    """
+    return {"images": [], "count": 0}
+
+
 class TroveSearchService:
     """Service for searching and processing Trove results."""
 
@@ -150,12 +178,15 @@ class TroveSearchService:
         Returns:
             Tuple of (normalized_records, total_count)
         """
+        # Use full records for newspapers so we can derive page imagery metadata
+        reclevel = "full" if category == "newspaper" else "brief"
+
         data = await self.client.search(
             q=q,
             category=category,
             n=n,
             s=s,
-            reclevel="brief",
+            reclevel=reclevel,
             **kwargs,
         )
 

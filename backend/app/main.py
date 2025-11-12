@@ -1,15 +1,18 @@
 import os
+from pathlib import Path
 
 import orjson
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .adapters.trove import search_trove
 from .deps import get_cache, get_http_client
 from .models import NormalizedItem, SearchResponse
 from .schemas import ReadyResponse
 from .utils.csv_export import items_to_csv_bytes
+from .routers import deep_research, formatting, dashboard, batch_research, search_reader, reader_text, summarize, tunnel, qrcode, context, pages, items, text_tools, mobile_api
 
 app = FastAPI(title="Archive Detective API", version="0.1.0")
 
@@ -86,6 +89,37 @@ async def export(
     )
 
 
+app.include_router(deep_research.router)
+app.include_router(formatting.router)
+app.include_router(dashboard.router)
+app.include_router(batch_research.router)
+app.include_router(search_reader.router)
+app.include_router(reader_text.router)
+app.include_router(summarize.router)
+app.include_router(tunnel.router)
+app.include_router(qrcode.router)
+app.include_router(context.router)
+app.include_router(pages.router)
+app.include_router(items.router)
+app.include_router(text_tools.router)
+app.include_router(mobile_api.router)
+
+# Mount static files
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+@app.post("/api/tts/stream")
+async def tts_stream():
+    """TTS endpoint stub - returns 501 Not Implemented if TTS server absent."""
+    return JSONResponse(
+        status_code=501,
+        content={"error": "TTS service not implemented", "detail": "Text-to-speech is not available. Use browser SpeechSynthesis API as fallback."}
+    )
+
+
 @app.get("/")
 async def root():
-    return PlainTextResponse("Archive Detective API. Use /search?q=term")
+    """Redirect root to dashboard."""
+    return RedirectResponse(url="/dashboard", status_code=302)

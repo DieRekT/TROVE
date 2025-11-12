@@ -1,0 +1,1345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>{% block title %}Troveing{% endblock %} - Research Partner</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="description" content="Search millions of items in Trove digital library - newspapers, books, images, and more"/>
+  <link rel="stylesheet" href="{{ static_url(request, 'static/style.css') }}"/>
+  <link rel="stylesheet" href="{{ static_url(request, 'static/context-tray.css') }}"/>
+  <link rel="stylesheet" href="{{ static_url(request, 'static/css/voice-input.css') }}"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+</head>
+<body>
+  <header class="app-header" id="topAppBar">
+    <div class="app-header__brand">
+      <a href="/dashboard" class="brand-link" aria-label="Troveing Home">
+        <span class="brand-icon">📚</span>
+        <span class="brand-text">Troveing</span>
+      </a>
+    </div>
+    <div class="app-header__title" id="pageTitle" data-page-title="">
+      {% block page_title %}{% endblock %}
+    </div>
+    <nav class="app-header__nav" aria-label="Primary navigation">
+      <a href="/search" class="nav-item">Search</a>
+      <a href="/research" class="nav-item">🔎 Deep Research</a>
+      <a href="/desk" class="nav-item">Research Desk</a>
+      <a href="/studio" class="nav-item">Report Studio</a>
+      <a href="/kingfisher" class="nav-item">Kingfisher</a>
+      <a href="/collections" class="nav-item">Collections</a>
+      <div class="nav-item nav-location" id="header-location" style="display:none;" title="Current selected location">
+        <span id="header-location-name">📍 Location</span>
+      </div>
+    </nav>
+    <div class="app-header__actions" id="pageActions">
+      {% block page_actions %}{% endblock %}
+      <div class="app-header__actions-primary">
+        <form class="header-search" action="/search" method="get" role="search">
+          <input type="search" name="q" placeholder="Search Trove..." aria-label="Search Trove"/>
+          <button type="submit" aria-label="Submit search">⌕</button>
+        </form>
+        <button class="header-button" type="button" onclick="toggleContextPanel()" aria-label="Open research context">
+          📚 Research <span data-context-badge style="display:none;">0</span>
+        </button>
+      </div>
+      <div class="app-header__actions-overflow" id="actionsOverflow">
+        <button class="header-button header-button--overflow" type="button" aria-label="More actions" aria-expanded="false" aria-haspopup="true" id="overflowMenuButton">
+          ⋮
+        </button>
+        <div class="overflow-menu" id="overflowMenu" role="menu" hidden>
+          <button class="header-button" type="button" onclick="showQRModal()" aria-label="Open mobile connect modal" role="menuitem">📱 Connect</button>
+          <a href="/status" class="header-button status-link" aria-label="Open status page" role="menuitem">📊 Status</a>
+        </div>
+      </div>
+    </div>
+    <button class="header-mobile-toggle" type="button" aria-label="Toggle navigation" onclick="document.body.classList.toggle('nav-open');">
+      ☰
+    </button>
+  </header>
+  <script>
+    (function() {
+      const header = document.querySelector('.app-header');
+      const toggle = header ? header.querySelector('.header-mobile-toggle') : null;
+      const navLinks = header ? header.querySelectorAll('.app-header__nav a, .app-header__actions a, .app-header__actions button') : [];
+      const overflowButton = document.getElementById('overflowMenuButton');
+      const overflowMenu = document.getElementById('overflowMenu');
+      const pageTitle = document.getElementById('pageTitle');
+      const pageActions = document.getElementById('pageActions');
+
+      function closeNav() {
+        document.body.classList.remove('nav-open');
+      }
+
+      if (toggle) {
+        toggle.addEventListener('click', () => {
+          document.body.classList.toggle('nav-open');
+        });
+      }
+
+      navLinks.forEach(link => {
+        link.addEventListener('click', () => {
+          if (window.innerWidth <= 980) {
+            closeNav();
+          }
+        });
+      });
+
+      window.addEventListener('resize', () => {
+        if (window.innerWidth > 980) {
+          closeNav();
+        }
+      });
+
+      // Overflow menu toggle
+      if (overflowButton && overflowMenu) {
+        overflowButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isOpen = !overflowMenu.hidden;
+          overflowMenu.hidden = isOpen;
+          overflowButton.setAttribute('aria-expanded', !isOpen);
+        });
+
+        // Close overflow menu when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!overflowButton.contains(e.target) && !overflowMenu.contains(e.target)) {
+            overflowMenu.hidden = true;
+            overflowButton.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }
+
+      // Top App Bar scroll collapse behavior
+      let lastScrollY = window.scrollY;
+      let scrollTimeout = null;
+      let isScrolling = false;
+
+      function handleScroll() {
+        const currentScrollY = window.scrollY;
+        const scrollDelta = currentScrollY - lastScrollY;
+
+        if (scrollDelta > 0 && currentScrollY > 100) {
+          // Scrolling down - collapse header
+          if (!header.classList.contains('scrolled')) {
+            header.classList.add('scrolled');
+          }
+          if (currentScrollY > 200 && !isScrolling) {
+            header.classList.add('collapsed');
+            isScrolling = true;
+          }
+        } else if (scrollDelta < 0) {
+          // Scrolling up - show header
+          header.classList.remove('collapsed');
+          isScrolling = false;
+          if (currentScrollY < 50) {
+            header.classList.remove('scrolled');
+          }
+        }
+
+        lastScrollY = currentScrollY;
+
+        // Clear timeout
+        if (scrollTimeout) {
+          clearTimeout(scrollTimeout);
+        }
+
+        // Reset scrolling state after pause
+        scrollTimeout = setTimeout(() => {
+          if (currentScrollY < 200) {
+            header.classList.remove('collapsed');
+            isScrolling = false;
+          }
+        }, 150);
+      }
+
+      // Throttled scroll handler
+      let ticking = false;
+      window.addEventListener('scroll', () => {
+        if (!ticking) {
+          window.requestAnimationFrame(() => {
+            handleScroll();
+            ticking = false;
+          });
+          ticking = true;
+        }
+      }, { passive: true });
+
+      // Manage action overflow (show overflow menu if >3 primary actions)
+      function manageActionOverflow() {
+        if (!pageActions) return;
+        
+        const primaryActions = pageActions.querySelector('.app-header__actions-primary');
+        const overflowContainer = pageActions.querySelector('.app-header__actions-overflow');
+        const allActions = pageActions.querySelectorAll('.app-header__actions-primary > *, .app-header__actions > button:not(.app-header__actions-overflow *)');
+        
+        if (!primaryActions || !overflowContainer) return;
+
+        // Count visible primary actions (excluding overflow menu itself)
+        const visibleActions = Array.from(allActions).filter(el => {
+          return el.offsetParent !== null && !el.closest('.app-header__actions-overflow');
+        });
+
+        // If more than 3 actions, move extras to overflow
+        if (visibleActions.length > 3 && overflowMenu) {
+          overflowContainer.hidden = false;
+          // Move actions 4+ to overflow menu
+          const actionsToMove = visibleActions.slice(3);
+          actionsToMove.forEach(action => {
+            if (!overflowMenu.contains(action)) {
+              const menuItem = action.cloneNode(true);
+              menuItem.setAttribute('role', 'menuitem');
+              overflowMenu.appendChild(menuItem);
+              action.style.display = 'none';
+            }
+          });
+        } else {
+          overflowContainer.hidden = true;
+        }
+      }
+
+      // Run on load and resize
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', manageActionOverflow);
+      } else {
+        manageActionOverflow();
+      }
+      window.addEventListener('resize', manageActionOverflow);
+
+      // Set page title from data attribute or block content
+      if (pageTitle) {
+        const titleText = pageTitle.getAttribute('data-page-title') || pageTitle.textContent.trim();
+        if (titleText) {
+          pageTitle.textContent = titleText;
+          pageTitle.style.display = 'flex';
+        } else {
+          pageTitle.style.display = 'none';
+        }
+      }
+    })();
+  </script>
+  <main class="main-content">
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+  <footer class="footer">
+    <div class="container">
+      <p>
+        Uses Trove API v3. Results and images may be subject to partner access terms.
+        <a href="https://trove.nla.gov.au/about/create-something/using-api/v3/api-technical-guide" target="_blank" rel="noopener">API Documentation</a>.
+      </p>
+      <p class="footer-meta">
+        <small>Built with FastAPI • Trove v3</small>
+      </p>
+    </div>
+  </footer>
+
+  <!-- QR Code Modal -->
+  <div id="qrModal" class="qr-modal" style="display:none;">
+    <div class="qr-modal-content">
+      <div class="qr-modal-header">
+        <h2>📱 Connect Mobile App</h2>
+        <button class="qr-modal-close" onclick="closeQRModal()">&times;</button>
+      </div>
+      <div class="qr-modal-body">
+        <div id="tunnelStatus" style="margin-bottom:1rem;padding:0.75rem;border-radius:6px;font-size:13px;display:none;">
+          <div id="tunnelStatusText">Checking tunnel status...</div>
+        </div>
+        
+        <div style="text-align:center;margin:1rem 0;">
+          <img id="qrCodeImage" src="/api/qrcode" alt="QR Code" style="max-width:300px;width:100%;border:2px solid #ddd;border-radius:8px;padding:10px;background:#fff;" />
+        </div>
+        
+        <div style="margin-bottom:1rem;">
+          <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Connection URL:</label>
+          <div style="display:flex;gap:6px;">
+            <input type="text" id="qrUrlInput" readonly style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;background:#f5f5f5;" />
+            <button onclick="copyQRUrl()" style="padding:8px 12px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-size:13px;">📋</button>
+          </div>
+        </div>
+        
+        <div style="display:flex;gap:6px;margin-bottom:1rem;">
+          <button onclick="checkTunnel(event)" style="flex:1;padding:10px;background:#0066cc;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:600;">🌐 Start Tunnel</button>
+          <button onclick="refreshTunnelStatus()" style="flex:1;padding:10px;background:#6c757d;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">🔄 Refresh</button>
+        </div>
+        
+        <div style="padding:0.75rem;background:#f0f8ff;border-radius:6px;font-size:12px;color:#0066cc;text-align:left;">
+          <strong>💡 How to connect:</strong>
+          <ul style="margin:0.5rem 0 0 1.2rem;padding:0;">
+            <li>Scan QR code with your phone camera</li>
+            <li>Or copy the URL and open in your browser</li>
+            <li>Start tunnel for public access (works from anywhere)</li>
+            <li>Or use local IP for same WiFi network</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .qr-modal {
+      position: fixed;
+      z-index: 10000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-modal-content {
+      background-color: white;
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .qr-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    .qr-modal-header h2 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+    .qr-modal-close {
+      background: none;
+      border: none;
+      font-size: 2rem;
+      cursor: pointer;
+      color: #666;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      line-height: 30px;
+    }
+    .qr-modal-close:hover {
+      color: #000;
+    }
+    .qr-modal-body {
+      text-align: center;
+    }
+    .btn-qr:hover {
+      opacity: 0.8;
+    }
+  </style>
+
+  <script>
+    async function showQRModal() {
+      const modal = document.getElementById('qrModal');
+      const urlInput = document.getElementById('qrUrlInput');
+      
+      // Refresh tunnel status and update URL
+      await refreshTunnelStatus();
+      
+      modal.style.display = 'flex';
+    }
+    
+    async function refreshTunnelStatus() {
+      const statusDiv = document.getElementById('tunnelStatus');
+      const statusText = document.getElementById('tunnelStatusText');
+      const urlInput = document.getElementById('qrUrlInput');
+      
+      try {
+        const response = await fetch('/api/tunnel/status');
+        const data = await response.json();
+        
+        if (data.ok && data.url) {
+          // Tunnel is active
+          statusDiv.style.display = 'block';
+          statusDiv.style.background = '#d4edda';
+          statusDiv.style.border = '1px solid #c3e6cb';
+          statusDiv.style.color = '#155724';
+          statusText.innerHTML = `✅ <strong>Tunnel Active:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:12px;">${data.url}</code>`;
+          urlInput.value = data.url;
+        } else {
+          // No tunnel - get local IP
+          statusDiv.style.display = 'block';
+          statusDiv.style.background = '#fff3cd';
+          statusDiv.style.border = '1px solid #ffc107';
+          statusDiv.style.color = '#856404';
+          statusText.innerHTML = '⚠️ <strong>Local Network Only</strong> - Start tunnel for public access';
+          
+          // Get local IP
+          try {
+            const ipResponse = await fetch('/api/local-ip');
+            if (ipResponse.ok) {
+              const ipData = await ipResponse.json();
+              if (ipData.ip) {
+                const port = window.location.port || 8000;
+                urlInput.value = `http://${ipData.ip}:${port}`;
+              } else {
+                urlInput.value = window.location.origin;
+              }
+            } else {
+              urlInput.value = window.location.origin;
+            }
+          } catch (e) {
+            urlInput.value = window.location.origin;
+          }
+        }
+        
+        // Update QR code with current URL
+        updateQRCode();
+      } catch (e) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#f8d7da';
+        statusDiv.style.border = '1px solid #f5c6cb';
+        statusDiv.style.color = '#721c24';
+        statusText.innerHTML = '❌ <strong>Error checking status</strong>';
+        urlInput.value = window.location.origin;
+        updateQRCode();
+      }
+    }
+    
+    async function checkTunnel(evt) {
+      const btn = evt?.currentTarget || evt?.target || null;
+      const originalText = btn ? btn.textContent : '🌐 Start Tunnel';
+      if (btn) {
+        btn.textContent = 'Starting...';
+        btn.disabled = true;
+      }
+      
+      try {
+        const response = await fetch('/api/tunnel/start', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.ok && data.url) {
+          // Show success message briefly
+          if (btn) {
+            btn.textContent = '✅ Started!';
+            btn.style.background = '#28a745';
+          }
+          await refreshTunnelStatus();
+          if (btn) {
+            setTimeout(() => {
+              btn.textContent = originalText;
+              btn.style.background = '#0066cc';
+              btn.disabled = false;
+            }, 2000);
+          }
+        } else {
+          alert(`❌ Failed to start tunnel\n\n${data.message || data.error || 'Unknown error'}\n\nInstall: pip install pyngrok\nOr run: ngrok http 8000`);
+          await refreshTunnelStatus();
+          if (btn) {
+            btn.textContent = originalText;
+            btn.disabled = false;
+          }
+        }
+      } catch (e) {
+        alert(`❌ Error: ${e.message}`);
+        await refreshTunnelStatus();
+        if (btn) {
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      }
+    }
+    
+    function updateQRCode() {
+      const urlInput = document.getElementById('qrUrlInput');
+      const qrImg = document.getElementById('qrCodeImage');
+      const url = urlInput.value.trim() || window.location.origin;
+      
+      // Update QR code image
+      qrImg.src = `/api/qrcode?url=${encodeURIComponent(url)}`;
+    }
+    
+    function closeQRModal() {
+      document.getElementById('qrModal').style.display = 'none';
+    }
+    
+    function copyQRUrl() {
+      const urlInput = document.getElementById('qrUrlInput');
+      urlInput.select();
+      urlInput.setSelectionRange(0, 99999); // For mobile
+      
+      try {
+        navigator.clipboard.writeText(urlInput.value);
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => {
+          btn.textContent = originalText;
+        }, 2000);
+      } catch (e) {
+        // Fallback for older browsers
+        document.execCommand('copy');
+        alert('URL copied to clipboard!');
+      }
+    }
+    
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      const modal = document.getElementById('qrModal');
+      if (event.target == modal) {
+        closeQRModal();
+      }
+    }
+  </script>
+
+  <!-- Hotkeys Overlay -->
+  <div class="hotkeys-overlay" id="hotkeysOverlay">
+    <div class="hotkeys-content">
+      <div class="modal-header">
+        <h2>⌨️ Keyboard Shortcuts</h2>
+        <button class="btn-close" onclick="closeHotkeys()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="hotkey-item">
+          <span>Search</span>
+          <kbd class="hotkey-key">Ctrl+K</kbd>
+        </div>
+        <div class="hotkey-item">
+          <span>Open Reader</span>
+          <kbd class="hotkey-key">Ctrl+R</kbd>
+        </div>
+        <div class="hotkey-item">
+          <span>Toggle Listen (in Reader)</span>
+          <kbd class="hotkey-key">Space</kbd>
+        </div>
+        <div class="hotkey-item">
+          <span>Add to Collection</span>
+          <kbd class="hotkey-key">Ctrl+S</kbd>
+        </div>
+        <div class="hotkey-item">
+          <span>Send to Studio</span>
+          <kbd class="hotkey-key">Ctrl+E</kbd>
+        </div>
+        <div class="hotkey-item">
+          <span>Show Help</span>
+          <kbd class="hotkey-key">?</kbd>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Global Hotkeys
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+K: Focus search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[name="q"], #q_main, .search-input-main');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        } else {
+          window.location.href = '/search';
+        }
+      }
+      
+      // Ctrl+R: Open reader (if on search/results page)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+        e.preventDefault();
+        const firstResult = document.querySelector('.result-card, .result-item');
+        if (firstResult) {
+          const link = firstResult.querySelector('a[href*="/reader"], .btn-action');
+          if (link) {
+            const href = link.getAttribute('href') || link.closest('.result-card')?.dataset?.id;
+            if (href) window.location.href = href.includes('/reader') ? href : `/reader?id=${href}`;
+          }
+        }
+      }
+      
+      // Space: Toggle listen (only in reader)
+      if (e.key === ' ' && !e.target.matches('input, textarea, [contenteditable]')) {
+        const listenBtn = document.getElementById('listenBtn');
+        if (listenBtn) {
+          e.preventDefault();
+          listenBtn.click();
+        }
+      }
+      
+      // Ctrl+S: Add to collection
+      if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.target.matches('input, textarea')) {
+        e.preventDefault();
+        const addBtn = document.querySelector('[onclick*="addToCollection"], .btn-action');
+        if (addBtn) addBtn.click();
+      }
+      
+      // ?: Show help
+      if (e.key === '?' && !e.target.matches('input, textarea')) {
+        showHotkeys();
+      }
+      
+      // Escape: Close modals/overlays
+      if (e.key === 'Escape') {
+        closeHotkeys();
+        const modals = document.querySelectorAll('.modal, .hotkeys-overlay');
+        modals.forEach(m => m.style.display = 'none');
+      }
+    });
+    
+    function showHotkeys() {
+      document.getElementById('hotkeysOverlay').classList.add('show');
+    }
+    
+    function closeHotkeys() {
+      document.getElementById('hotkeysOverlay').classList.remove('show');
+    }
+  </script>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script>
+    // Toast notification system
+    function showToast(message, type = 'info', duration = 3000) {
+      const container = document.getElementById('toastContainer') || document.body;
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.animation = 'slideInUp 0.3s ease reverse';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+    
+    // Make showToast globally accessible
+    window.showToast = showToast;
+    
+    // Global error handler
+    window.addEventListener('error', (e) => {
+      console.error('Global error:', e);
+    });
+    
+    // Unhandled promise rejection handler
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('Unhandled promise rejection:', e.reason);
+      showToast('An unexpected error occurred', 'error');
+    });
+    
+    // Global TTS (Text-to-Speech) System
+    window.TTS = {
+      synth: null,
+      currentUtterance: null,
+      audioElement: null,
+      currentAudioUrl: null,
+      backendPreferred: true,
+      backendInUse: false,
+      supportsSpeechSynthesis: false,
+      isSpeaking: false,
+      rate: 1.0,
+      pitch: 1.0,
+      volume: 1.0,
+      
+      init() {
+        if (typeof Audio !== 'undefined') {
+          this.audioElement = new Audio();
+          this.audioElement.preload = 'auto';
+          this.audioElement.addEventListener('ended', () => this._onPlaybackEnd());
+          this.audioElement.addEventListener('pause', () => {
+            if (this.audioElement && this.audioElement.currentTime === 0) {
+              this._onPlaybackEnd();
+            }
+          });
+          this.audioElement.addEventListener('error', (event) => {
+            console.warn('Audio playback error:', event);
+            showToast('Audio playback failed', 'error');
+            this._onPlaybackEnd(true);
+          });
+        }
+        
+        if ('speechSynthesis' in window) {
+          this.synth = window.speechSynthesis;
+          this.supportsSpeechSynthesis = true;
+          if (this.synth.getVoices().length === 0) {
+            const voicesCheck = () => {
+              const voices = this.synth.getVoices();
+              if (voices.length > 0) {
+                console.log('TTS voices loaded:', voices.length);
+              } else {
+                setTimeout(voicesCheck, 100);
+              }
+            };
+            this.synth.addEventListener('voiceschanged', () => {
+              voicesCheck();
+            }, { once: true });
+            setTimeout(voicesCheck, 100);
+          } else {
+            console.log('TTS initialized with', this.synth.getVoices().length, 'voices');
+          }
+        } else {
+          console.warn('Speech synthesis not supported in this browser');
+        }
+      },
+      
+      _prepareText(text) {
+        if (!text || text.trim() === '') {
+          return '';
+        }
+        let cleaned = text.replace(/<[^>]+>/g, ' ');
+        cleaned = cleaned.replace(/[,\-–—]/g, ' ');
+        cleaned = cleaned.replace(/[;:\/\\()[\]{}*_]/g, ' ');
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+        return cleaned;
+      },
+      
+      speak(text, options = {}) {
+        const cleanText = this._prepareText(text);
+        if (!cleanText) {
+          showToast('No readable text found', 'warn');
+          return false;
+        }
+        
+        this.stop();
+        
+        const voice = options.voice || 'article';
+        
+        if (this.backendPreferred && this.audioElement) {
+          this.backendInUse = true;
+          this._speakBackend(cleanText, { ...options, voice }).catch((error) => {
+            console.warn('Backend TTS failed', error);
+            this.backendInUse = false;
+            if (error && error.message && /not configured|unavailable|failed/i.test(error.message)) {
+              this.backendPreferred = false;
+            }
+            this._revokeAudioUrl();
+            if (this.supportsSpeechSynthesis) {
+              this._speakWithSynth(cleanText, options);
+            } else {
+              this._onPlaybackEnd(true);
+              const message = (error && error.message) || 'Text-to-speech is unavailable';
+              showToast(message, 'error');
+            }
+          });
+          return true;
+        }
+        
+        if (!this.supportsSpeechSynthesis) {
+          showToast('Speech synthesis not supported in your browser', 'error');
+          return false;
+        }
+        
+        this._speakWithSynth(cleanText, options);
+        return true;
+      },
+      
+      async _speakBackend(cleanText, options) {
+        if (!this.audioElement) {
+          throw new Error('Audio playback not available');
+        }
+        
+        try {
+          const response = await fetch('/api/tts/stream', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              text: cleanText,
+              voice: options.voice || 'article'
+            })
+          });
+          
+          if (!response.ok) {
+            let detail = 'TTS request failed';
+            try {
+              const data = await response.json();
+              if (data && data.detail) {
+                detail = Array.isArray(data.detail) ? data.detail.join(', ') : data.detail;
+              }
+            } catch (jsonErr) {
+              console.warn('Failed to parse TTS error response', jsonErr);
+            }
+            throw new Error(detail);
+          }
+          
+          const arrayBuffer = await response.arrayBuffer();
+          if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+            throw new Error('TTS provider returned empty audio');
+          }
+          
+          const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+          const objectUrl = URL.createObjectURL(blob);
+          this._setAudioSource(objectUrl);
+          this.audioElement.playbackRate = options.rate || this.rate;
+          this.audioElement.volume = options.volume ?? this.volume;
+          this.audioElement.currentTime = 0;
+          await this.audioElement.play();
+          this.isSpeaking = true;
+        } catch (error) {
+          throw error instanceof Error ? error : new Error('Failed to start TTS playback');
+        }
+      },
+      
+      _setAudioSource(url) {
+        if (!this.audioElement) return;
+        this._revokeAudioUrl();
+        this.currentAudioUrl = url;
+        this.audioElement.src = url;
+        this.audioElement.load();
+      },
+      
+      _revokeAudioUrl() {
+        if (this.currentAudioUrl) {
+          URL.revokeObjectURL(this.currentAudioUrl);
+          this.currentAudioUrl = null;
+        }
+      },
+      
+      _speakWithSynth(cleanText, options) {
+        if (!this.synth) {
+          throw new Error('Speech synthesis not supported');
+        }
+        
+        const maxLength = 10000;
+        const textChunks = [];
+        if (cleanText.length > maxLength) {
+          const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [];
+          let currentChunk = '';
+          for (const sentence of sentences) {
+            if ((currentChunk + sentence).length > maxLength && currentChunk) {
+              textChunks.push(currentChunk);
+              currentChunk = sentence;
+            } else {
+              currentChunk += sentence;
+            }
+          }
+          if (currentChunk) textChunks.push(currentChunk);
+        } else {
+          textChunks.push(cleanText);
+        }
+        
+        this._speakChunk(textChunks, 0, options);
+        this.isSpeaking = true;
+      },
+      
+      _speakChunk(chunks, index, options) {
+        if (index >= chunks.length) {
+          this._onPlaybackEnd();
+          return;
+        }
+        
+        const chunkText = chunks[index];
+        this.currentUtterance = new SpeechSynthesisUtterance(chunkText);
+        this.currentUtterance.rate = options.rate || this.rate;
+        this.currentUtterance.pitch = options.pitch || this.pitch;
+        this.currentUtterance.volume = options.volume ?? this.volume;
+        
+        const voices = this.synth.getVoices();
+        const preferredVoices = ['en-AU', 'en-GB', 'en-US', 'en'];
+        let voice = null;
+        
+        for (const pref of preferredVoices) {
+          voice = voices.find(v => v.lang.startsWith(pref));
+          if (voice) break;
+        }
+        
+        if (!voice && voices.length > 0) {
+          voice = voices.find(v => v.lang.startsWith('en')) || voices[0];
+        }
+        
+        if (voice) {
+          this.currentUtterance.voice = voice;
+        }
+        
+        this.currentUtterance.onend = () => {
+          if (this.isSpeaking) {
+            this._speakChunk(chunks, index + 1, options);
+          } else {
+            this.currentUtterance = null;
+          }
+        };
+        
+        this.currentUtterance.onerror = (e) => {
+          console.error('Speech synthesis error:', e);
+          if (this.isSpeaking && index + 1 < chunks.length) {
+            this._speakChunk(chunks, index + 1, options);
+          } else {
+            showToast('Error reading text: ' + (e.error || 'Unknown error'), 'error');
+            this._onPlaybackEnd(true);
+          }
+        };
+        
+        setTimeout(() => {
+          try {
+            this.synth.speak(this.currentUtterance);
+          } catch (error) {
+            console.error('Failed to start speech:', error);
+            showToast('Failed to start speech. Please try again.', 'error');
+            this._onPlaybackEnd(true);
+          }
+        }, 0);
+      },
+      
+      _resetButtons() {
+        document.querySelectorAll('.btn-read-aloud, #listenBtn').forEach(btn => {
+          btn.classList.remove('active', 'playing');
+          const icon = btn.querySelector('.read-icon, #listenIcon');
+          const text = btn.querySelector('.read-text, #listenText');
+          const defaultIcon = btn.dataset.iconDefault || '🔊';
+          const defaultText = btn.dataset.textDefault || 'Listen';
+          if (icon) icon.textContent = defaultIcon;
+          if (text) text.textContent = defaultText;
+        });
+        const speedControls = document.getElementById('speedControls');
+        if (speedControls) speedControls.style.display = 'none';
+      },
+      
+      _onPlaybackEnd(force = false) {
+        if (!force && !this.backendInUse && !this.isSpeaking) {
+          return;
+        }
+        this.isSpeaking = false;
+        this.backendInUse = false;
+        this.currentUtterance = null;
+        this._revokeAudioUrl();
+        this._resetButtons();
+      },
+      
+      stop() {
+        if (this.audioElement && !this.audioElement.paused) {
+          this.audioElement.pause();
+          this.audioElement.currentTime = 0;
+        }
+        if (this.synth) {
+          this.synth.cancel();
+        }
+        this._onPlaybackEnd(true);
+      },
+      
+      toggle(text, buttonElement, options = {}) {
+        if (this.isSpeaking || this.backendInUse) {
+          this.stop();
+          if (buttonElement) {
+            buttonElement.classList.remove('active');
+            const icon = buttonElement.querySelector('.read-icon');
+            const textNode = buttonElement.querySelector('.read-text');
+            const defaultIcon = buttonElement.dataset.iconDefault || '🔊';
+            const defaultText = buttonElement.dataset.textDefault || 'Listen';
+            if (icon) icon.textContent = defaultIcon;
+            if (textNode) textNode.textContent = defaultText;
+          }
+        } else {
+          if (this.speak(text, options)) {
+            if (buttonElement) {
+              buttonElement.classList.add('active');
+              const icon = buttonElement.querySelector('.read-icon');
+              const textNode = buttonElement.querySelector('.read-text');
+              if (icon) icon.textContent = '⏸️';
+              if (textNode) textNode.textContent = buttonElement.dataset.textActive || 'Stop';
+            }
+          }
+        }
+      },
+      
+      setRate(rate) {
+        this.rate = Math.max(0.1, Math.min(2, rate));
+        if (this.currentUtterance && this.isSpeaking) {
+          try {
+            this.currentUtterance.rate = this.rate;
+          } catch (e) {
+            console.warn('Could not update rate during speech:', e);
+          }
+        }
+        if (this.audioElement) {
+          try {
+            this.audioElement.playbackRate = this.rate;
+          } catch (e) {
+            console.warn('Could not update audio playback rate:', e);
+          }
+        }
+      },
+      
+      setPitch(pitch) {
+        this.pitch = Math.max(0, Math.min(2, pitch));
+        if (this.currentUtterance) {
+          this.currentUtterance.pitch = this.pitch;
+        }
+      },
+      
+      setVolume(volume) {
+        this.volume = Math.max(0, Math.min(1, volume));
+        if (this.currentUtterance) {
+          this.currentUtterance.volume = this.volume;
+        }
+        if (this.audioElement) {
+          this.audioElement.volume = this.volume;
+        }
+      }
+    };
+    
+    // Initialize TTS on page load
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => window.TTS.init());
+    } else {
+      window.TTS.init();
+    }
+    
+    // Helper function to read aloud content from an element
+    window.readAloud = function(elementOrSelector, options = {}) {
+      let element = typeof elementOrSelector === 'string' 
+        ? document.querySelector(elementOrSelector)
+        : elementOrSelector;
+      
+      if (!element) {
+        showToast('Element not found', 'error');
+        return;
+      }
+      
+      const text = element.innerText || element.textContent || '';
+      return window.TTS.speak(text, options);
+    };
+    
+    // Helper to create read aloud button
+    window.createReadAloudButton = function(textOrElement, options = {}) {
+      const button = document.createElement('button');
+      button.className = 'btn-read-aloud ' + (options.className || '');
+      button.innerHTML = '<span class="read-icon">🔊</span> <span class="read-text">Read Aloud</span>';
+      button.title = 'Read aloud';
+      button.setAttribute('data-tooltip', 'Read aloud (Space to toggle)');
+      if (options.textDefault) button.dataset.textDefault = options.textDefault;
+      if (options.textActive) button.dataset.textActive = options.textActive;
+      if (options.iconDefault) button.dataset.iconDefault = options.iconDefault;
+      
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        let text = '';
+        
+        if (typeof textOrElement === 'string') {
+          text = textOrElement;
+        } else if (textOrElement instanceof Element) {
+          text = textOrElement.innerText || textOrElement.textContent || '';
+        }
+        
+        if (text) {
+          window.TTS.toggle(text, button, options);
+        }
+      });
+      
+      return button;
+    };
+    
+    // Research Context Tracking - Track articles for AI knowledge
+    // Now tracks to SQLite context store + localStorage (dual storage)
+    window.trackArticle = function(article) {
+      if (!article || !article.id) return;
+      
+      // Track to SQLite context store (primary)
+      fetch('/api/context/track', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          trove_id: article.id,
+          title: article.title || 'Untitled',
+          date: article.date || '',
+          source: article.source || '',
+          url: article.url || '',
+          snippet: (article.snippet || '').substring(0, 500)
+        })
+      }).then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        // Auto-refresh context tray if it exists (e.g., on chat page)
+        if (window.contextTray) {
+          window.contextTray.fetchContext();
+        }
+        // Show subtle success feedback (optional UX improvement)
+        // Only show if user hasn't disabled tracking notifications
+        const showTrackingFeedback = localStorage.getItem('showTrackingFeedback') !== 'false';
+        if (showTrackingFeedback && typeof window.showToast === 'function') {
+          const title = (article.title || 'Article').substring(0, 40);
+          window.showToast(`📚 Tracked: ${title}${title.length >= 40 ? '...' : ''}`, 'success', 2000);
+        }
+      }).catch(err => {
+        console.warn('Failed to track to SQLite:', err);
+        // Don't show error toast for tracking failures - it's background operation
+        // Errors are logged to console for debugging
+      });
+      
+      // Also track to localStorage (for backward compatibility)
+      try {
+        const recentArticles = JSON.parse(localStorage.getItem('recentArticles') || '[]');
+        
+        // Remove existing entry with same ID
+        const filtered = recentArticles.filter(a => a.id !== article.id);
+        
+        // Add to front (most recent first)
+        filtered.unshift({
+          id: article.id,
+          title: article.title || 'Untitled',
+          date: article.date || '',
+          source: article.source || '',
+          snippet: (article.snippet || '').substring(0, 300),
+          url: article.url || '',
+          timestamp: Date.now()
+        });
+        
+        // Keep only last 50 articles
+        const limited = filtered.slice(0, 50);
+        
+        localStorage.setItem('recentArticles', JSON.stringify(limited));
+      } catch (err) {
+        console.warn('Failed to track to localStorage:', err);
+      }
+    };
+    
+    // Track articles when they're viewed
+    document.addEventListener('DOMContentLoaded', () => {
+      // Track search results
+      document.querySelectorAll('[data-id]').forEach(card => {
+        const articleId = card.getAttribute('data-id');
+        if (articleId && card.classList.contains('result-card')) {
+          const article = {
+            id: articleId,
+            title: card.getAttribute('data-title') || card.querySelector('.result-title')?.textContent || '',
+            date: card.getAttribute('data-date') || '',
+            source: card.getAttribute('data-source') || '',
+            snippet: card.querySelector('.result-snippet')?.textContent || '',
+            url: card.querySelector('a[href*="trove"]')?.href || ''
+          };
+          window.trackArticle(article);
+        }
+      });
+    });
+  </script>
+
+  <script>
+    // Rotating title phrases - designed to inspire searches
+    const titlePhrases = [
+      { icon: "🕰️", text: "Time Capsule Explorer" },
+      { icon: "🔍", text: "Archive Hunter" },
+      { icon: "🕵️", text: "History Detective" },
+      { icon: "📜", text: "Past Discovered" },
+      { icon: "🗝️", text: "Stories Unlocked" },
+      { icon: "⛏️", text: "Digital Archaeologist" },
+      { icon: "📸", text: "Memory Keeper" },
+      { icon: "📖", text: "Chronicle Seeker" },
+      { icon: "⏰", text: "Time Traveler" },
+      { icon: "🏛️", text: "Ancient Stories" },
+      { icon: "💎", text: "Legacy Finder" },
+      { icon: "🗺️", text: "Heritage Hunter" },
+      { icon: "🌊", text: "Past Unbound" },
+      { icon: "📻", text: "Echoes of History" },
+      { icon: "📚", text: "The Archive" }
+    ];
+
+    let currentIndex = 0;
+    const titleElement = document.getElementById('rotating-title');
+    const titleTextElement = titleElement?.querySelector('.title-text');
+
+    function rotateTitle() {
+      if (!titleTextElement) return;
+      
+      const phrase = titlePhrases[currentIndex];
+      titleTextElement.style.opacity = '0';
+      titleTextElement.style.transform = 'translateY(-10px)';
+      
+      setTimeout(() => {
+        titleTextElement.textContent = `${phrase.icon} ${phrase.text}`;
+        titleTextElement.style.opacity = '1';
+        titleTextElement.style.transform = 'translateY(0)';
+      }, 300);
+      
+      currentIndex = (currentIndex + 1) % titlePhrases.length;
+    }
+
+    // Start rotation after page load
+    if (titleTextElement) {
+      // Initial delay, then rotate every 20 seconds
+      setTimeout(() => {
+        setInterval(rotateTitle, 20000);
+      }, 20000);
+    }
+  </script>
+  
+  <!-- Context Tray Script -->
+  <script src="{{ static_url(request, 'static/context-tray.js') }}"></script>
+  <script>
+          function toggleContextPanel() {
+        // Try overlay first (search page)
+        const overlay = document.getElementById('context-panel-overlay');
+        if (overlay) {
+          overlay.classList.toggle('open');
+          // Refresh context panel data when opening
+          if (overlay.classList.contains('open') && typeof contextPanel !== 'undefined' && contextPanel) {
+            contextPanel.fetchContext();
+          }
+          return;
+        }
+        // Fallback to regular panel
+        const panel = document.getElementById('context-panel');
+        if (panel) {
+          panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+        }
+      }
+    
+    // Location Management Utilities (available app-wide)
+    window.getCurrentLocation = function() {
+      try {
+        const stored = localStorage.getItem('currentLocation');
+        if (stored) {
+          const location = JSON.parse(stored);
+          // Check if location is still valid (not older than 24 hours)
+          const age = Date.now() - (location.timestamp || 0);
+          if (age < 24 * 60 * 60 * 1000) {
+            return location;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to get current location:', e);
+      }
+      return null;
+    };
+    
+    window.saveCurrentLocation = function(location) {
+      try {
+        const locationData = {
+          ...location,
+          timestamp: Date.now()
+        };
+        localStorage.setItem('currentLocation', JSON.stringify(locationData));
+        
+        // Dispatch event so other parts of the app can update
+        window.dispatchEvent(new CustomEvent('locationChanged', { detail: locationData }));
+      } catch (e) {
+        console.warn('Failed to save location:', e);
+      }
+    };
+    
+    window.clearCurrentLocation = function() {
+      try {
+        localStorage.removeItem('currentLocation');
+        window.dispatchEvent(new CustomEvent('locationChanged', { detail: null }));
+      } catch (e) {
+        console.warn('Failed to clear location:', e);
+      }
+    };
+    
+    // Update header location indicator
+    function updateHeaderLocation() {
+      const locationEl = document.getElementById('header-location');
+      const locationNameEl = document.getElementById('header-location-name');
+
+      const location = window.getCurrentLocation ? window.getCurrentLocation() : null;
+      
+      if (location && (location.name || (location.lat && location.lng))) {
+        const locationLabel = location.name
+          ? `📍 ${location.name}`
+          : location.lat && location.lng
+            ? `📍 ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
+            : '📍 Location';
+
+        if (locationEl && locationNameEl) {
+          locationNameEl.textContent = locationLabel;
+          locationEl.style.display = 'inline-flex';
+          locationEl.style.alignItems = 'center';
+          locationEl.onclick = function() { window.location.href = '/fishing'; };
+          locationEl.style.cursor = 'pointer';
+          locationEl.title = `Current location: ${location.name || `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}. Click to change.`;
+        }
+
+        document.body.classList.add('location-active');
+      } else {
+        if (locationEl) {
+          locationEl.style.display = 'none';
+        }
+        document.body.classList.remove('location-active');
+      }
+    }
+    
+    function setContextBadge(count, { flash = false } = {}) {
+      const badges = document.querySelectorAll('[data-context-badge], [data-context-badge-mobile]');
+      if (!badges.length) return;
+
+      badges.forEach(badge => {
+        if (count > 0) {
+          badge.textContent = count;
+          badge.style.display = 'inline-block';
+          if (flash) {
+            badge.classList.add('badge-pulse');
+            setTimeout(() => badge.classList.remove('badge-pulse'), 600);
+          }
+        } else {
+          badge.style.display = 'none';
+        }
+      });
+    }
+
+    window.refreshContextBadge = function(options = {}) {
+      return fetch('/api/context/stats')
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            setContextBadge(data.pinned || 0, options);
+          } else {
+            setContextBadge(0);
+          }
+        })
+        .catch(() => {});
+    };
+    
+    // Initialize context badge on load
+    document.addEventListener('DOMContentLoaded', () => {
+      // Update header location
+      updateHeaderLocation();
+      
+      // Listen for location changes
+      window.addEventListener('locationChanged', function(e) {
+        updateHeaderLocation();
+      });
+      
+      // Also check periodically in case location was updated in another tab
+      setInterval(updateHeaderLocation, 2000);
+      
+      window.refreshContextBadge();
+      window.addEventListener('contextUpdated', () => window.refreshContextBadge({ flash: true }));
+      
+      // Add floating chat button
+      const chatBtn = document.createElement('button');
+      chatBtn.className = 'floating-chat-btn';
+      chatBtn.title = 'Open AI Assistant (Cmd+K or Ctrl+K)';
+      chatBtn.setAttribute('aria-label', 'Open AI Assistant');
+      chatBtn.setAttribute('aria-expanded', 'false');
+      chatBtn.innerHTML = `
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+      `;
+      chatBtn.onclick = () => {
+        if (window.chatOverlay) {
+          window.chatOverlay.toggle();
+          // Add active class when overlay is open
+          if (window.chatOverlay.isOpen) {
+            chatBtn.classList.add('active');
+          } else {
+            chatBtn.classList.remove('active');
+          }
+        } else {
+          // Fallback: redirect to chat page
+          window.location.href = '/chat';
+        }
+      };
+      document.body.appendChild(chatBtn);
+      
+      // Update button state when overlay opens/closes
+      if (window.chatOverlay) {
+        const originalOpen = window.chatOverlay.open.bind(window.chatOverlay);
+        const originalClose = window.chatOverlay.close.bind(window.chatOverlay);
+        
+        window.chatOverlay.open = function() {
+          originalOpen();
+          chatBtn.classList.add('active');
+        };
+        
+        window.chatOverlay.close = function() {
+          originalClose();
+          chatBtn.classList.remove('active');
+        };
+      }
+    });
+  </script>
+  <script defer src="{{ static_url(request, 'static/js/shortcuts.js') }}"></script>
+  <script defer src="{{ static_url(request, 'static/js/voice-input.js') }}"></script>
+</body>
+</html>

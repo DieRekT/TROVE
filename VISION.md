@@ -1,6 +1,6 @@
 # 🎯 Trove Project - Full Vision & Workflow Guide
 
-**Last Updated:** $(date)
+**Last Updated:** 2025
 
 ## 🗺️ Project Architecture Overview
 
@@ -259,10 +259,10 @@ User Action → Frontend → API Endpoint → Context Store → Database
 
 ### 🚧 In Progress / Partial
 
-- [ ] Mobile app (needs Node 18 setup)
-- [ ] Advanced report generation
-- [ ] Batch query processing automation
-- [ ] Collection sharing
+- [ ] Mobile app (needs Node 18 setup - see `apps/mobile/README_NODE18.md`)
+- [ ] Advanced report generation (basic reports working)
+- [ ] Batch query processing automation (manual CSV processing available)
+- [ ] Collection sharing (collections working, sharing planned)
 
 ---
 
@@ -355,11 +355,14 @@ Status       →  /status       (System health)
 
 ## 🔗 Related Documentation
 
-- `README.md` - Basic setup
+- `README.md` - Project overview and quick start
+- `COMPREHENSIVE_BUILD_REPORT.md` - Complete build inventory (1100+ lines)
+- `FEATURES.md` - Detailed features list (50+ features)
+- `STATUS.md` - System status and health checks
+- `APP_STATUS.md` - Archive Detective API status
 - `RESEARCH_DEMO.md` - Feature walkthrough
-- `STATUS.md` - System status details
-- `APP_STATUS.md` - Archive Detective status
 - `QUICK_START_GUIDE.md` - Quick start steps
+- `EVOLUTION_REPORT.md` - Development history
 
 ---
 

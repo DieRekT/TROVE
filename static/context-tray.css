@@ -90,28 +90,78 @@
   color: var(--fg, #e7eaee);
 }
 
+.context-tray-stats {
+  display: flex;
+  gap: var(--space-md, 1rem);
+  padding: var(--space-sm, 0.5rem) var(--space-md, 1rem);
+  border-bottom: 1px solid var(--border, #222831);
+  background: var(--card-hover, #1a1e25);
+  font-size: 0.8125rem;
+}
+
+.stat-item {
+  color: var(--muted, #97a0ad);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs, 0.25rem);
+}
+
+.stat-item strong {
+  color: var(--fg, #e7eaee);
+  font-weight: 600;
+}
+
 .context-tray-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs, 0.25rem);
   padding: var(--space-sm, 0.5rem) var(--space-md, 1rem);
   border-bottom: 1px solid var(--border, #222831);
 }
 
-.btn-clear-context {
+.btn-clear-context,
+.btn-clear-tracked,
+.btn-export-json,
+.btn-export-csv {
   padding: var(--space-xs, 0.25rem) var(--space-sm, 0.5rem);
-  background: var(--error-bg, #3d1f1f);
-  border: 1px solid var(--error-border, #7f2d2d);
   border-radius: var(--radius-sm, 6px);
-  color: var(--error, #ef4444);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   cursor: pointer;
   transition: all var(--transition-fast, 150ms ease);
+  border: 1px solid;
+  white-space: nowrap;
 }
 
-.btn-clear-context:hover:not(:disabled) {
+.btn-clear-context,
+.btn-clear-tracked {
+  background: var(--error-bg, #3d1f1f);
+  border-color: var(--error-border, #7f2d2d);
+  color: var(--error, #ef4444);
+}
+
+.btn-clear-context:hover:not(:disabled),
+.btn-clear-tracked:hover:not(:disabled) {
   background: var(--error, #ef4444);
   color: var(--bg, #0b0d10);
 }
 
-.btn-clear-context:disabled {
+.btn-export-json,
+.btn-export-csv {
+  background: var(--card-hover, #1a1e25);
+  border-color: var(--border-light, #2d3748);
+  color: var(--fg, #e7eaee);
+}
+
+.btn-export-json:hover:not(:disabled),
+.btn-export-csv:hover:not(:disabled) {
+  background: var(--border-light, #2d3748);
+  color: var(--brand, #69c);
+}
+
+.btn-clear-context:disabled,
+.btn-clear-tracked:disabled,
+.btn-export-json:disabled,
+.btn-export-csv:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -154,10 +204,70 @@
   background: rgba(102, 153, 204, 0.1);
 }
 
+.context-item.tracked {
+  border-color: var(--border, #222831);
+  background: transparent;
+}
+
+.pinned-label,
+.tracked-label {
+  display: inline-block;
+  margin-left: var(--space-xs, 0.25rem);
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.pinned-label {
+  background: rgba(102, 153, 204, 0.2);
+  color: var(--brand, #69c);
+}
+
+.tracked-label {
+  background: var(--card-hover, #1a1e25);
+  color: var(--muted, #97a0ad);
+}
+
+.btn-read {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  text-decoration: none;
+  border-radius: var(--radius-sm, 6px);
+  transition: all var(--transition-fast, 150ms ease);
+  color: var(--muted, #97a0ad);
+}
+
+.btn-read:hover {
+  background: var(--card-hover, #1a1e25);
+  color: var(--brand, #69c);
+}
+
+.context-empty .hint {
+  margin-top: var(--space-xs, 0.25rem);
+  font-size: 0.75rem;
+  color: var(--muted, #97a0ad);
+}
+
 .context-item-header {
   display: flex;
   align-items: flex-start;
   gap: var(--space-xs, 0.25rem);
+}
+
+.context-item-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs, 0.25rem);
+  flex-shrink: 0;
 }
 
 .pin-toggle {
@@ -178,6 +288,41 @@
 
 .pin-toggle:hover {
   background: var(--card-hover, #1a1e25);
+}
+
+.move-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.move-up,
+.move-down {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0;
+  width: 1.25rem;
+  height: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted, #97a0ad);
+  border-radius: var(--radius-sm, 6px);
+  transition: all var(--transition-fast, 150ms ease);
+}
+
+.move-up:hover:not(:disabled),
+.move-down:hover:not(:disabled) {
+  background: var(--card-hover, #1a1e25);
+  color: var(--fg, #e7eaee);
+}
+
+.move-up:disabled,
+.move-down:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .context-item-title {

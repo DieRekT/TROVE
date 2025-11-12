@@ -1,0 +1,34 @@
+# Domain reputation configuration
+# Scores are added to relevance scoring:
+# - 0.2 for .gov/.edu/.org
+# - 0.1 for reputable news domains
+# - -0.1 penalty for spammy TLDs
+
+trusted_domains:
+  # High reputation (.gov, .edu, .org)
+  ".gov.au": 0.2
+  ".gov": 0.2
+  ".edu": 0.2
+  ".edu.au": 0.2
+  ".org": 0.15
+  ".org.au": 0.15
+  
+  # Specific trusted domains
+  "nla.gov.au": 0.25
+  "abs.gov.au": 0.25
+  "trove.nla.gov.au": 0.25
+  
+  # Reputable news domains
+  "abc.net.au": 0.1
+  "theguardian.com": 0.1
+  "smh.com.au": 0.1
+  "theage.com.au": 0.1
+  "afr.com": 0.1
+
+spam_tlds:
+  - ".xyz"
+  - ".top"
+  - ".click"
+  - ".download"
+  - ".stream"
+

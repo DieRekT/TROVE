@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Report Studio - Troveing{% endblock %}
+{% block content %}
+<div class="studio-layout">
+  <header class="studio-header">
+    <h1>✍️ Report Studio</h1>
+    <div class="header-actions">
+      <button class="btn-secondary" onclick="exportReport('pdf')">📄 Export PDF</button>
+      <button class="btn-secondary" onclick="exportReport('docx')">📝 Export DOCX</button>
+      <button class="btn-secondary" onclick="exportReport('html')">🌐 Export HTML</button>
+      <button class="btn-primary" onclick="synthesizeReport()">✨ Synthesize</button>
+    </div>
+  </header>
+
+  <main class="studio-main">
+    <!-- Left: Outline -->
+    <aside class="outline-panel">
+      <div class="panel-header">
+        <h3>📋 Outline</h3>
+        <button class="btn-icon" onclick="addSection()">+</button>
+      </div>
+      <div class="outline-list" id="outlineList">
+        <div class="outline-item active" data-section="intro">
+          <span>1. Introduction</span>
+        </div>
+        <div class="outline-item" data-section="body">
+          <span>2. Main Content</span>
+        </div>
+        <div class="outline-item" data-section="conclusion">
+          <span>3. Conclusion</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: Editor -->
+    <section class="editor-panel">
+      <div class="editor-toolbar">
+        <button class="btn-tool" onclick="formatText('bold')"><strong>B</strong></button>
+        <button class="btn-tool" onclick="formatText('italic')"><em>I</em></button>
+        <button class="btn-tool" onclick="formatText('underline')"><u>U</u></button>
+        <span class="toolbar-separator"></span>
+        <button class="btn-tool" onclick="insertCitation()">📚 Citation</button>
+        <button class="btn-tool" onclick="insertQuote()">💬 Quote</button>
+      </div>
+      <div class="editor-content">
+        <div contenteditable="true" id="reportEditor" class="report-editor">
+          <h1>Research Report</h1>
+          <p>Start writing your report here. Use the outline on the left to navigate sections.</p>
+          <p>You can add citations and quotes from your collections using the toolbar buttons.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Sources & Quotes -->
+    <aside class="sources-panel">
+      <div class="panel-tabs">
+        <button class="tab-btn active" onclick="showTab('sources')">📚 Sources</button>
+        <button class="tab-btn" onclick="showTab('quotes')">💬 Quotes</button>
+      </div>
+      
+      <div class="panel-content" id="sourcesTab">
+        <div class="sources-list" id="sourcesList">
+          <p class="empty-state">No sources added yet. Add items from search results or collections.</p>
+        </div>
+      </div>
+      
+      <div class="panel-content" id="quotesTab" style="display: none;">
+        <div class="quotes-list" id="quotesList">
+          <p class="empty-state">No quotes saved yet. Select text and click "Add Quote" to save.</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+// Load report from localStorage
+function loadReport() {
+  const saved = localStorage.getItem('currentReport');
+  if (saved) {
+    const report = JSON.parse(saved);
+    document.getElementById('reportEditor').innerHTML = report.content;
+    if (report.sources) {
+      renderSources(report.sources);
+    }
+    if (report.quotes) {
+      renderQuotes(report.quotes);
+    }
+  }
+}
+
+function saveReport() {
+  const content = document.getElementById('reportEditor').innerHTML;
+  const sources = Array.from(document.querySelectorAll('.source-item')).map(el => ({
+    id: el.dataset.id,
+    title: el.querySelector('.source-title').textContent,
+    url: el.querySelector('.source-url')?.href || ''
+  }));
+  const quotes = Array.from(document.querySelectorAll('.quote-item')).map(el => ({
+    text: el.querySelector('.quote-text').textContent,
+    source: el.querySelector('.quote-source')?.textContent || ''
+  }));
+  
+  localStorage.setItem('currentReport', JSON.stringify({content, sources, quotes}));
+}
+
+function formatText(command) {
+  document.execCommand(command, false, null);
+  document.getElementById('reportEditor').focus();
+}
+
+function insertCitation() {
+  const sources = JSON.parse(localStorage.getItem('currentReport') || '{}').sources || [];
+  if (sources.length === 0) {
+    alert('Add sources first from search results or collections.');
+    return;
+  }
+  
+  const sourceId = prompt('Enter source number (1-' + sources.length + '):');
+  if (sourceId) {
+    const source = sources[parseInt(sourceId) - 1];
+    if (source) {
+      document.execCommand('insertHTML', false, `<cite>${source.title}</cite>`);
+    }
+  }
+}
+
+function insertQuote() {
+  const quotes = JSON.parse(localStorage.getItem('currentReport') || '{}').quotes || [];
+  if (quotes.length === 0) {
+    alert('Save quotes first by selecting text and clicking "Add Quote".');
+    return;
+  }
+  
+  const quoteId = prompt('Enter quote number (1-' + quotes.length + '):');
+  if (quoteId) {
+    const quote = quotes[parseInt(quoteId) - 1];
+    if (quote) {
+      document.execCommand('insertHTML', false, `<blockquote>${quote.text}</blockquote>`);
+    }
+  }
+}
+
+function showTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.panel-content').forEach(content => content.style.display = 'none');
+  
+  event.target.classList.add('active');
+  document.getElementById(tab + 'Tab').style.display = 'block';
+}
+
+function synthesizeReport() {
+  const content = document.getElementById('reportEditor').innerText;
+  if (!content.trim()) {
+    alert('Please write some content first.');
+    return;
+  }
+  
+  if (confirm('This will enhance your report with AI. Continue?')) {
+    // Would call AI synthesis API
+    alert('Synthesis feature coming soon!');
+  }
+}
+
+function exportReport(format) {
+  const content = document.getElementById('reportEditor').innerHTML;
+  const title = document.querySelector('h1').textContent || 'Report';
+  
+  if (format === 'pdf') {
+    window.print();
+  } else if (format === 'html') {
+    const blob = new Blob([`<!DOCTYPE html><html><head><title>${title}</title></head><body>${content}</body></html>`], {type: 'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title}.html`;
+    a.click();
+  } else {
+    alert(`${format.toUpperCase()} export coming soon!`);
+  }
+}
+
+// Auto-save
+setInterval(saveReport, 30000);
+
+// Load on page load
+loadReport();
+</script>
+{% endblock %}
+

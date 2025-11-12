@@ -1,9 +1,33 @@
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
 from .config import AI_MODEL_ROUTER, OPENAI_API_KEY
+
+# Import registry and telemetry
+try:
+    from app.prompts.registry import get_summarize_prompts
+    from app.prompts.telemetry import log_summarize
+except ImportError:
+    # Fallback: try backend path if app.prompts doesn't exist
+    try:
+        from backend.app.prompts.registry import get_summarize_prompts
+        from backend.app.prompts.telemetry import log_summarize
+    except ImportError:
+        # Last resort: create stub functions
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("Prompt registry not found, using fallback")
+        def get_summarize_prompts(version: str | None = None) -> tuple[str, str]:
+            return ("Summarize system prompt", "Summarize user prompt: {body}")
+        def log_summarize(*args, **kwargs) -> None:
+            pass
+
+# Load prompts from registry
+SUMMARIZE_SYSTEM, SUMMARIZE_USER = get_summarize_prompts()
+PROMPT_VERSION = os.getenv("PROMPTS_SUMMARIZE_VERSION", "v2")
 
 
 def _fallback_bullets(text: str, max_points: int = 7) -> list[str]:
@@ -36,24 +60,28 @@ def summarize_text(text: str, use_llm: bool = True) -> dict[str, Any]:
             from openai import OpenAI
 
             cli = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = (
-                "Summarize as tight bullet points for a property-history researcher.\n"
-                "Include dates, names, places, and actions. 5–8 bullets, max 800 chars total."
-            )
+            # Build user prompt from template
+            user_prompt = SUMMARIZE_USER.format(body=text[:8000])
             resp = cli.chat.completions.create(
                 model=AI_MODEL_ROUTER,
                 temperature=0.2,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You compress text into factual bullets with dates and names.",
-                    },
-                    {"role": "user", "content": prompt + "\n\nTEXT:\n" + text[:8000]},
+                    {"role": "system", "content": SUMMARIZE_SYSTEM},
+                    {"role": "user", "content": user_prompt},
                 ],
             )
             out = (resp.choices[0].message.content or "").strip()
             bullets = [("• " + b.strip("-• \n")) for b in out.split("\n") if b.strip()]
-            return {"bullets": bullets[:10], "summary": "\n".join(bullets[:10])}
+            result = {"bullets": bullets[:10], "summary": "\n".join(bullets[:10])}
+            
+            # Log telemetry
+            try:
+                has_dates = any(re.search(r"\b(18|19|20)\d{2}\b", bullet) for bullet in bullets)
+                log_summarize(PROMPT_VERSION, len(text), len(result["summary"]), has_dates)
+            except Exception:
+                pass  # Don't fail on telemetry errors
+            
+            return result
         except Exception:
             pass
 

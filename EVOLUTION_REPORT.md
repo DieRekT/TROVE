@@ -269,8 +269,7 @@ trove/
 │   ├── studio.html               # Report studio
 │   ├── timeline.html             # Timeline
 │   ├── status.html               # Status page
-│   ├── index.html                # Legacy search
-│   └── reporter.html             # Legacy reporter
+│   └── _deprecated/              # Archived legacy templates (index.html, reporter.html)
 ├── static/
 │   ├── style.css                 # Modern CSS (2000+ lines)
 │   └── chat.css                  # Chat-specific styles
@@ -498,9 +497,9 @@ trove/
 
 ## 🔄 Devolution (Removed/Deprecated Features)
 
-### Features That May Have Been Removed
-1. **Legacy Search Page** - `index.html` still exists but may be deprecated
-2. **Legacy Reporter** - `reporter.html` exists but `/reporter` route removed
+### Features That Have Been Removed/Archived
+1. **Legacy Search Page** - `index.html` archived to `templates/_deprecated/` (replaced by `search.html`)
+2. **Legacy Reporter** - `reporter.html` archived to `templates/_deprecated/` (replaced by `studio.html`)
 3. **Simple Search** - Replaced by two-pane search
 4. **Basic Error Pages** - Replaced with toast notifications
 
@@ -529,13 +528,13 @@ trove/
 - **Responsive design**
 
 ### 🔧 Technical Debt
-- Some legacy templates still exist (`index.html`, `reporter.html`)
+- Legacy templates archived to `templates/_deprecated/` (no longer in use)
 - Session management could be improved (currently IP-based)
 - No database persistence (uses in-memory storage)
 - No user authentication system
 - Limited caching (could add Redis)
 - No rate limiting
-- No structured logging
+- ✅ **Structured logging** - Implemented with JSON format, request IDs, and contextual information
 
 ### 📈 Future Evolution Opportunities
 1. **Database Integration** - Replace in-memory storage
@@ -543,7 +542,7 @@ trove/
 3. **Persistence** - Save collections, reports, context across sessions
 4. **Caching** - Redis for API responses
 5. **Rate Limiting** - Protect API endpoints
-6. **Structured Logging** - Better observability
+6. ✅ **Structured Logging** - Implemented with JSON format and request tracking
 7. **Testing** - Comprehensive test suite
 8. **CI/CD** - Automated deployment
 9. **Monitoring** - Metrics and alerting

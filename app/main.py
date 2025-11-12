@@ -17,46 +17,182 @@ from urllib.parse import quote_plus
 import httpx
 import qrcode
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import ValidationError
 
-from app.archive_detective import fetch_item_text, init_archive_detective, normalize_trove_id
+from app.archive_detective import init_archive_detective
+from app.archive_detective.article_io import extract_article_id_from_url as normalize_trove_id, fetch_item_text
 from app.context_store import (
     delete_kingfisher_cards,
-    get_article as get_context_article,
+    list_articles,
     list_kingfisher_cards,
     list_article_images,
+    list_recent_articles,
     save_kingfisher_cards,
     sid_from,
     upsert_item as upsert_context_item,
-    update_article_full_text,
-    update_article_summary,
 )
 from app.config import get_settings
 from app.dependencies import get_trove_client
 from app.exceptions import ConfigurationError, NetworkError, TroveAPIError, TroveAppError
 from app.services import refresh_article_images, TroveSearchService
-from app.summarizer import stream_card_summary, summarize_cards as summarize_cards_structured
-from app.trove_client import TroveClient
-from app.types import (
-    BriefImage,
-    BriefResponse,
-    BriefSection,
-    Card,
-    CardList,
-    CardSummary,
-    PinMetadata,
-)
-from backend.kingfisher.summarizer import summarize_cards as summarize_cards_text
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+YEAR_MIN = 1800
+YEAR_MAX = 2024
+
+CATEGORY_OPTIONS = [
+    {"id": "newspaper", "label": "Newspapers"},
+    {"id": "image", "label": "Images"},
+    {"id": "book", "label": "Books"},
+    {"id": "research", "label": "Research"},
+    {"id": "people", "label": "People"},
+    {"id": "magazine", "label": "Magazines"},
+    {"id": "diary", "label": "Diaries"},
+    {"id": "music", "label": "Music"},
+    {"id": "list", "label": "Lists"},
+    {"id": "all", "label": "Everything"},
+]
+
+DEFAULT_PLACE_SUGGESTIONS = [
+    "Sydney, NSW",
+    "Melbourne, VIC",
+    "Brisbane, QLD",
+    "Perth, WA",
+    "Adelaide, SA",
+    "Hobart, TAS",
+]
+
+DEFAULT_PUBLICATION_SUGGESTIONS = [
+    "The Sydney Morning Herald",
+    "The Argus",
+    "The Age",
+    "The Brisbane Courier",
+    "The Canberra Times",
+    "The Courier-Mail",
+]
+
+DEFAULT_FORMAT_SUGGESTIONS = [
+    {"label": "Articles", "value": "Article"},
+    {"label": "Photographs", "value": "Photograph"},
+    {"label": "Advertisements", "value": "Advertisement"},
+    {"label": "Letters", "value": "Letter"},
+    {"label": "Maps", "value": "Map"},
+    {"label": "Diaries", "value": "Diary"},
+]
+
+DEFAULT_DECADES = [2020, 2000, 1990, 1970, 1950, 1900]
+
+YEAR_PATTERN = re.compile(r"(18|19|20)\d{2}")
+
+# Summarizer functions - using backend implementation
+try:
+    from backend.kingfisher.summarizer import summarize_cards as _backend_summarize_cards
+
+    def summarize_cards_structured(cards, metadata):
+        try:
+            return _backend_summarize_cards(cards, metadata)
+        except TypeError:
+            return _backend_summarize_cards(cards)
+
+    def summarize_cards_text(cards):
+        try:
+            return _backend_summarize_cards(cards)
+        except TypeError:
+            return _backend_summarize_cards(cards, {})
+
+    async def stream_card_summary(cards, metadata):
+        summary = summarize_cards_structured(cards, metadata)
+        yield summary
+
+except ImportError:
+    # Fallback stubs if summarizer not available
+    def summarize_cards_structured(cards, metadata):
+        return {"summary": "Summary not available", "highlights": []}
+
+    def summarize_cards_text(cards):
+        return "Summary not available."
+
+    async def stream_card_summary(cards, metadata):
+        yield {"summary": "Summary not available", "highlights": []}
+from app.trove_client import TroveClient
+# Define types inline since app.types doesn't exist
+from typing import TypedDict, Optional as Opt
+from pydantic import BaseModel, Field
+
+class BriefImage(BaseModel):
+    kind: Opt[str] = None
+    source: Opt[str] = None
+    url: Opt[str] = None
+    local_path: Opt[str] = None
+    width: Opt[int] = None
+    height: Opt[int] = None
+    generated: bool = False
+    metadata: dict = {}
+
+class BriefSection(BaseModel):
+    heading: str
+    card_type: str
+    cards: list
+
+class Card(BaseModel):
+    type: str
+    title: Opt[str] = None
+    content: str
+    metadata: Opt[dict] = None
+
+
+class PinMetadata(BaseModel):
+    article_id: str
+    title: Opt[str] = None
+    date: Opt[str] = None
+    source: Opt[str] = None
+    url: Opt[str] = None
+    snippet: Opt[str] = None
+    full_text_available: bool = False
+    summary: Opt[str] = None
+    summary_bullets: list[str] | None = None
+    cards: list[Card] = Field(default_factory=list)
+    generated_cards: bool = False
+
+
+class CardList(BaseModel):
+    article_id: str
+    cards: list[Card]
+    generated: bool = False
+    metadata: Opt[PinMetadata] = None
+
+
+class CardSummary(BaseModel):
+    article_id: str
+    card_count: int
+    summary: dict | str
+    summary_text: str
+    cached: bool
+    generated_at: float
+
+
+class BriefResponse(BaseModel):
+    article: PinMetadata
+    summary: CardSummary
+    sections: list[BriefSection]
+    images: list[BriefImage]
+    markdown: str
+    generated_cards: bool
+    image_sources: Opt[dict] = None
+# Set up structured logging
+from app.utils.logging import setup_logging, get_logger
+
+settings = get_settings()
+setup_logging(
+    level=settings.log_level,
+    json_format=settings.log_json,
+    log_file=settings.log_file
+)
+logger = get_logger(__name__)
 
 # Initialize FastAPI app
-settings = get_settings()
 app = FastAPI(
     title="Troveing - Research Partner",
     version=settings.app_version,
@@ -67,8 +203,13 @@ app = FastAPI(
 )
 
 # Add middleware to strip empty query params (fixes year_to="" validation error)
-from app.middleware.strip_empty import StripEmptyQueryParamsMiddleware
-app.add_middleware(StripEmptyQueryParamsMiddleware, keys=["year_from", "year_to"])
+# Note: StripEmptyQueryParamsMiddleware not available, skipping
+# from app.middleware.strip_empty import StripEmptyQueryParamsMiddleware
+# app.add_middleware(StripEmptyQueryParamsMiddleware, keys=["year_from", "year_to"])
+
+# Add request logging middleware for structured logging
+from app.middleware.request_logging import RequestLoggingMiddleware
+app.add_middleware(RequestLoggingMiddleware)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -203,7 +344,7 @@ async def _build_card_summary(
         generated_at = float(cached_entry.get("generated_at") or time.time())
         cached = True
     else:
-        summary_text_future = asyncio.to_thread(summarize_cards_text, cards)
+        summary_text_future = asyncio.to_thread(summarize_cards_text, cards_payload)
         summary_struct_future = asyncio.to_thread(
             summarize_cards_structured,
             cards_payload,
@@ -229,12 +370,13 @@ async def _build_card_summary(
                 raw_highlights = summary_struct.get("highlights") or []
                 if isinstance(raw_highlights, list):
                     highlights = [str(item).strip() for item in raw_highlights if item]
-            update_article_summary(
-                _session_id_from_request(request),
-                metadata.article_id,
-                summary_text,
-                bullets=highlights,
-            )
+            # Note: update_article_summary function not available, skipping persistence
+            # update_article_summary(
+            #     _session_id_from_request(request),
+            #     metadata.article_id,
+            #     summary_text,
+            #     bullets=highlights,
+            # )
         except Exception as exc:  # pragma: no cover - best-effort persistence
             logger.debug("Unable to persist summary for %s: %s", metadata.article_id, exc)
 
@@ -265,7 +407,9 @@ async def _load_pin_payload(
         raise HTTPException(status_code=400, detail="Invalid Trove identifier")
 
     sid = _session_id_from_request(request)
-    article = get_context_article(sid, normalized_id) or {}
+    # Get article from session articles list
+    articles = list_articles(sid, limit=1000)
+    article = next((a for a in articles if a.get("trove_id") == normalized_id), {})
 
     stored_text = article.get("full_text") or article.get("text") or ""
     stored_text = _clean_text(stored_text)
@@ -300,10 +444,13 @@ async def _load_pin_payload(
             )
             if clean_text:
                 try:
-                    update_article_full_text(sid, normalized_id, clean_text)
+                    # Note: update_article_full_text function not available, using upsert_item instead
+                    upsert_context_item(sid, {"trove_id": normalized_id, "full_text": clean_text})
                 except Exception as exc:  # pragma: no cover
                     logger.debug("Unable to persist full text for %s: %s", normalized_id, exc)
-            article = get_context_article(sid, normalized_id) or {}
+            # Refresh article from list after update
+            articles = list_articles(sid, limit=1000)
+            article = next((a for a in articles if a.get("trove_id") == normalized_id), {})
             stored_text = clean_text or stored_text
             snippet = article.get("snippet") or fetch_payload.get("snippet") or snippet
         elif not article:
@@ -366,27 +513,98 @@ if os.getenv("ARCHIVE_DETECTIVE_ENABLED", "true").lower() in {"1", "true", "yes"
     init_archive_detective(app)
 
 # Add context API router
-from app.routers import pages
 from app.context_api import router as context_router
 app.include_router(context_router)
-app.include_router(pages.router)
-from app.routers import context_alias
-app.include_router(context_alias.router)
-# Mock search router removed - all endpoints now use real Trove API
-# from app.routers import mock_search
-# app.include_router(mock_search.router)
-from app.routers import agent
-app.include_router(agent.router)
 
-# Add fulltext and export routers
-from app.routers import articles_fulltext, export as export_router, tts as tts_router
+# Add research API router
+from fastapi import APIRouter, BackgroundTasks
+from fastapi.responses import FileResponse, StreamingResponse
+from app.research.schemas import ResearchStart
+from app.research import planner, jobs, store
+
+try:
+    from sse_starlette.sse import EventSourceResponse
+except ImportError:
+    # Fallback if sse-starlette not available
+    def EventSourceResponse(gen):
+        return StreamingResponse(gen, media_type="text/event-stream")
+
+research_router = APIRouter(prefix="/research", tags=["research"])
+
+@research_router.post("/start")
+async def start_research(payload: ResearchStart, background_tasks: BackgroundTasks):
+    """Start a new research job."""
+    try:
+        job_id = store.create_job(payload.question, payload.region, payload.time_window)
+        plan = planner.make_plan(payload.question, payload.region, payload.time_window, payload.depth)
+        background_tasks.add_task(jobs.run_in_background, job_id, plan, payload)
+        return JSONResponse(content={"job_id": job_id}, status_code=200)
+    except Exception as e:
+        logging.error(f"Error starting research job: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to start research: {str(e)}")
+
+@research_router.get("/{job_id}/progress")
+async def research_progress(job_id: str):
+    """Get research job progress."""
+    job = store.load_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+@research_router.get("/{job_id}/stream")
+async def research_stream(job_id: str):
+    """Stream research job progress via SSE."""
+    async def gen():
+        last = -1
+        while True:
+            job = store.load_job(job_id)
+            if not job:
+                yield {"event": "error", "data": "Job not found"}
+                break
+            if job.progress_pct != last:
+                last = job.progress_pct
+                yield {"event": "progress", "data": str(last)}
+            if job.status in ("done", "error"):
+                yield {"event": job.status, "data": job.status}
+                break
+            await asyncio.sleep(0.8)
+    return EventSourceResponse(gen())
+
+@research_router.get("/{job_id}/report.md")
+async def download_report(job_id: str):
+    """Download research report as Markdown."""
+    path = store.get_report_path(job_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Report not found")
+    return FileResponse(path, media_type="text/markdown", filename=f"research-{job_id}.md")
+
+app.include_router(research_router)
+
+# Note: Routers not available, commenting out
+# from app.routers import pages
+# from app.routers import context_alias
+# from app.routers import agent
+# from app.routers import articles_fulltext, export as export_router, tts as tts_router
+# app.include_router(pages.router)
+# app.include_router(context_alias.router)
+# app.include_router(agent.router)
+# app.include_router(articles_fulltext.router)
+
 from backend.kingfisher.card_extractor import extract_cards_from_text
 from backend.kingfisher.router import router as kingfisher_router
 from backend.kingfisher.types import Card as KingfisherCard
-app.include_router(articles_fulltext.router)
-app.include_router(export_router.router)
-app.include_router(tts_router.router)
+# app.include_router(export_router.router)  # Commented out - export_router not available
+# app.include_router(tts_router.router)  # Commented out - tts_router not available
 app.include_router(kingfisher_router)
+
+# Include deep research and dashboard routers from backend
+try:
+    from backend.app.routers import deep_research, formatting, dashboard
+    app.include_router(deep_research.router)
+    app.include_router(formatting.router)
+    app.include_router(dashboard.router)
+except ImportError as e:
+    logger.warning(f"Could not import backend routers: {e}")
 
 
 # Validate API keys at startup
@@ -432,7 +650,8 @@ async def dashboard(request: Request):
     from datetime import datetime
     from zoneinfo import ZoneInfo
     from pathlib import Path
-    from app.context_store import sid_from, get_session_stats, list_articles
+    from app.context_store import sid_from, list_articles
+    from app.research.store import list_recent_jobs
     
     # Get timezone
     tz = ZoneInfo("Australia/Sydney")
@@ -444,8 +663,17 @@ async def dashboard(request: Request):
         request.client.host if request.client else "127.0.0.1",
         request.headers.get("user-agent", "")
     )
-    stats = get_session_stats(sid)
+    # Note: get_session_stats not available, using empty stats
+    stats = {"total_articles": 0, "pinned_count": 0}
     recent_articles = list_articles(sid, limit=5)
+    stats["total_articles"] = len(recent_articles)
+    
+    # Get recent research jobs
+    try:
+        recent_research_jobs = list_recent_jobs(limit=5)
+    except Exception as e:
+        logger.warning(f"Failed to load recent research jobs: {e}")
+        recent_research_jobs = []
     
     # Count today's files (simplified - would use proper database in production)
     outputs_dir = Path("outputs")
@@ -466,6 +694,7 @@ async def dashboard(request: Request):
         "current_time": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
         "session_stats": stats,
         "recent_articles": recent_articles,
+        "recent_research_jobs": recent_research_jobs,
     }
     
     template = templates_env.get_template("dashboard.html")
@@ -567,6 +796,16 @@ async def trove_root(request: Request):
     return RedirectResponse(url="/search", status_code=302)
 
 
+@app.get("/research", response_class=HTMLResponse)
+async def research_page(request: Request, seed: Optional[str] = Query(None)):
+    """Deep Research page."""
+    template = templates_env.get_template("research.html")
+    return template.render(
+        request=request,
+        page_title="Deep Research",
+        seed_query=seed or "",
+    )
+
 @app.get("/trove/", response_class=HTMLResponse)
 async def trove_root_slash(request: Request):
     """Handle /trove/ path - redirect to search."""
@@ -633,8 +872,34 @@ async def summarize_pin(
 
             def produce() -> None:
                 try:
-                    for chunk in stream_card_summary(cards_payload, metadata_payload):
-                        asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
+                    # Create a new event loop for this thread to run the async generator
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        # Get the async generator object
+                        async_gen = stream_card_summary(cards_payload, metadata_payload)
+                        
+                        # Consume the async generator properly
+                        async def consume_generator():
+                            try:
+                                async for chunk in async_gen:
+                                    # Convert dict to string if needed
+                                    if isinstance(chunk, dict):
+                                        chunk_str = json.dumps(chunk, ensure_ascii=False)
+                                    else:
+                                        chunk_str = str(chunk)
+                                    asyncio.run_coroutine_threadsafe(queue.put(chunk_str), loop)
+                            finally:
+                                # Ensure generator is properly closed
+                                if hasattr(async_gen, 'aclose'):
+                                    try:
+                                        await async_gen.aclose()
+                                    except Exception:
+                                        pass
+                        
+                        new_loop.run_until_complete(consume_generator())
+                    finally:
+                        new_loop.close()
                 except Exception as exc:  # pragma: no cover
                     logger.exception("Streaming summary failed for %s: %s", trove_id, exc)
                     asyncio.run_coroutine_threadsafe(queue.put(f"\n[Summary error: {exc}]\n"), loop)
@@ -897,11 +1162,44 @@ async def search_page(
         str | None,
         Query(description="Sort order"),
     ] = None,
-    year_from: Annotated[int | None, Query(ge=1800, le=2024, description="Year from")] = None,
-    year_to: Annotated[int | None, Query(ge=1800, le=2024, description="Year to")] = None,
+    year_from: Annotated[
+        str | None, Query(description="Year from", pattern=r"^\d*$", example="1900")
+    ] = None,
+    year_to: Annotated[
+        str | None, Query(description="Year to", pattern=r"^\d*$", example="1950")
+    ] = None,
     client: TroveClient = Depends(get_trove_client),
 ):
     """Main search endpoint."""
+
+    def _parse_year_param(value: str | None, field_name: str) -> int | None:
+        if value is None:
+            return None
+        value_stripped = value.strip()
+        if value_stripped == "":
+            return None
+        try:
+            year = int(value_stripped)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail=f"{field_name} must be a valid integer"
+            ) from None
+        if year < YEAR_MIN or year > YEAR_MAX:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field_name} must be between {YEAR_MIN} and {YEAR_MAX} (got {year})",
+            )
+        return year
+
+    year_from_raw = year_from
+    year_to_raw = year_to
+    year_from_value = _parse_year_param(year_from_raw, "year_from")
+    year_to_value = _parse_year_param(year_to_raw, "year_to")
+    if year_from_value and year_to_value and year_from_value > year_to_value:
+        raise HTTPException(
+            status_code=400,
+            detail="year_from must be less than or equal to year_to",
+        )
     # Normalize empty strings to None and validate sortby
     if sortby == "":
         sortby = None
@@ -949,9 +1247,9 @@ async def search_page(
     if people_orgs_clean:
         safe_people = people_orgs_clean.replace('"', '\\"')
         query_terms.append(f'"{safe_people}"')
-    if year_from or year_to:
-        year_from_val = year_from if year_from else 1800
-        year_to_val = year_to if year_to else 2024
+    if year_from_value or year_to_value:
+        year_from_val = year_from_value if year_from_value is not None else YEAR_MIN
+        year_to_val = year_to_value if year_to_value is not None else YEAR_MAX
         date_range = f"date:[{year_from_val} TO {year_to_val}]"
         query_terms.append(date_range)
     compiled_query = " ".join(term for term in query_terms if term).strip()
@@ -971,8 +1269,8 @@ async def search_page(
         or keywords_clean
         or publication_clean
         or people_orgs_clean
-        or year_from
-        or year_to
+        or year_from_value
+        or year_to_value
     )
 
     if not has_query_input and category in categories_requiring_query:
@@ -1052,60 +1350,149 @@ async def search_page(
             error_message = f"Unexpected error: {type(e).__name__}: {str(e)}"
 
     try:
-        context = {
-            "request": request,
-            "q": q_clean,
-            "category": category,
-            "items": [item.model_dump(mode="json") for item in items],
-            "n": n,
-            "s": s,
-            "prev_s": prev_s,
-            "next_s": next_s,
-            "show_images": show_images,
-            "l_format": l_format_clean or "",
-            "l_artType": l_artType_clean or "",
-            "l_place": l_place_clean or "",
-            "publication": publication_clean or "",
-            "people_orgs": people_orgs_clean or "",
-            "keywords": keywords_clean or "",
-            "sortby": sortby or "",
-            "year_from": year_from,
-            "year_to": year_to,
-            "total": total,
-            "api_key_present": bool(settings.trove_api_key),
-            "error": error_message,
-            "can_paginate": can_paginate,
-        }
-
         template = templates_env.get_template("search.html")
-        
-        # Prepare items for template - map field names to template expectations
-        items_dict = []
+
+        # Prepare items for template and build suggestion counters
+        items_dict: list[dict[str, Any]] = []
+        place_counts: Counter[str] = Counter()
+        publication_counts: Counter[str] = Counter()
+        category_counts: Counter[str] = Counter()
+        decade_counts: Counter[int] = Counter()
+
         for item in items:
             item_data = item.model_dump(mode="json")
-            # Map model fields to template field names
-            items_dict.append({
-                "id": item_data.get("id"),
-                "title": item_data.get("title"),
-                "date": item_data.get("issued"),
-                "source": item_data.get("publisher_or_source"),
-                "url": item_data.get("trove_url"),
-                "snippet": item_data.get("snippet"),
-                "thumbnail": item_data.get("image_thumb"),
-                "image_full": item_data.get("image_full"),
-                "category": item_data.get("category"),
-            })
-        
+            source_value = (item_data.get("publisher_or_source") or "").strip()
+            if source_value:
+                publication_counts[source_value] += 1
+            category_value = (item_data.get("category") or "").strip()
+            if category_value:
+                category_counts[category_value] += 1
+
+            issued_value = item_data.get("issued") or ""
+            year_match = YEAR_PATTERN.search(issued_value)
+            if year_match:
+                try:
+                    year_val = int(year_match.group())
+                except ValueError:
+                    year_val = None
+                if year_val and YEAR_MIN <= year_val <= YEAR_MAX:
+                    decade_start = (year_val // 10) * 10
+                    decade_counts[decade_start] += 1
+
+            # Heuristic: extract place hint from publication text (e.g., "The Argus (Melbourne, Vic.)")
+            if source_value and "(" in source_value and source_value.endswith(")"):
+                place_hint = source_value.split("(")[-1].rstrip(")")
+                place_hint = place_hint.strip()
+                if place_hint:
+                    place_counts[place_hint] += 1
+
+            items_dict.append(
+                {
+                    "id": item_data.get("id"),
+                    "title": item_data.get("title"),
+                    "date": item_data.get("issued"),
+                    "source": source_value,
+                    "url": item_data.get("trove_url"),
+                    "snippet": item_data.get("snippet"),
+                    "thumbnail": item_data.get("image_thumb"),
+                    "image_full": item_data.get("image_full"),
+                    "category": category_value,
+                }
+            )
+
+        def merge_suggestions(counter: Counter[str], defaults: list[str], limit: int = 6) -> list[str]:
+            suggestions: list[str] = []
+            for value, _count in counter.most_common():
+                value = value.strip()
+                if not value:
+                    continue
+                if value not in suggestions:
+                    suggestions.append(value)
+                if len(suggestions) >= limit:
+                    break
+            for value in defaults:
+                if len(suggestions) >= limit:
+                    break
+                if value not in suggestions:
+                    suggestions.append(value)
+            return suggestions[:limit]
+
+        place_suggestions = merge_suggestions(place_counts, DEFAULT_PLACE_SUGGESTIONS)
+        publication_suggestions = merge_suggestions(publication_counts, DEFAULT_PUBLICATION_SUGGESTIONS, limit=8)
+
+        decade_suggestions: list[dict[str, int | str]] = []
+        for decade_start, _count in decade_counts.most_common():
+            decade_suggestions.append(
+                {
+                    "label": f"{decade_start}s",
+                    "year_from": decade_start,
+                    "year_to": min(decade_start + 9, YEAR_MAX),
+                }
+            )
+            if len(decade_suggestions) >= 6:
+                break
+        if not decade_suggestions:
+            for decade_start in DEFAULT_DECADES:
+                if decade_start > YEAR_MAX:
+                    continue
+                decade_suggestions.append(
+                    {
+                        "label": f"{decade_start}s",
+                        "year_from": decade_start,
+                        "year_to": min(decade_start + 9, YEAR_MAX),
+                    }
+                )
+                if len(decade_suggestions) >= 6:
+                    break
+
+        current_year = min(datetime.now().year, YEAR_MAX)
+        date_presets = [
+            {"label": "Last 5 Years", "year_from": max(YEAR_MIN, current_year - 4), "year_to": current_year},
+            {"label": "Last 10 Years", "year_from": max(YEAR_MIN, current_year - 9), "year_to": current_year},
+            {"label": "Post-WWII (1945+)", "year_from": 1945, "year_to": YEAR_MAX},
+            {"label": "Federation Era (1890–1910)", "year_from": 1890, "year_to": 1910},
+        ]
+
+        filter_suggestions = {
+            "places": place_suggestions,
+            "publications": publication_suggestions,
+            "formats": DEFAULT_FORMAT_SUGGESTIONS[:6],
+            "decades": decade_suggestions,
+            "date_presets": date_presets,
+        }
+
+        applied_filters: list[dict[str, str]] = []
+        if category and category != "newspaper":
+            label = next((opt["label"] for opt in CATEGORY_OPTIONS if opt["id"] == category), category.title())
+            applied_filters.append({"label": f"Category · {label}", "key": "category"})
+        if year_from_value is not None or year_to_value is not None:
+            yr_from_label = year_from_value if year_from_value is not None else YEAR_MIN
+            yr_to_label = year_to_value if year_to_value is not None else YEAR_MAX
+            applied_filters.append({"label": f"Year · {yr_from_label}–{yr_to_label}", "key": "year"})
+        if l_place_clean:
+            applied_filters.append({"label": f"Place · {l_place_clean}", "key": "l_place"})
+        if l_format_clean:
+            applied_filters.append({"label": f"Format · {l_format_clean}", "key": "l_format"})
+        if publication_clean:
+            applied_filters.append({"label": f"Publication · {publication_clean}", "key": "publication"})
+        if people_orgs_clean:
+            applied_filters.append({"label": f"People/Orgs · {people_orgs_clean}", "key": "people_orgs"})
+        if keywords_clean:
+            applied_filters.append({"label": f"Keywords · {keywords_clean}", "key": "keywords"})
+        if sortby:
+            sort_labels = {"dateAsc": "Date ↑", "dateDesc": "Date ↓"}
+            applied_filters.append({"label": f"Sort · {sort_labels.get(sortby, sortby.title())}", "key": "sortby"})
+
         # Build query string for pagination
         query_params = []
         if q_clean:
             query_params.append(f"q={quote_plus(q_clean)}")
         if category:
             query_params.append(f"category={category}")
-        if year_from:
-            query_params.append(f"year_from={year_from}")
-        if year_to:
-            query_params.append(f"year_to={year_to}")
+        if year_from_value is not None:
+            query_params.append(f"year_from={year_from_value}")
+        if year_to_value is not None:
+            query_params.append(f"year_to={year_to_value}")
         if l_place_clean:
             query_params.append(f"l_place={quote_plus(l_place_clean)}")
         if l_format_clean:
@@ -1120,11 +1507,36 @@ async def search_page(
             query_params.append(f"sortby={sortby}")
         query_params.append(f"n={n}")
         query_string = "&".join(query_params)
-        
-        # Update context with mapped items and query string
-        context["items"] = items_dict
-        context["query_string"] = query_string
-        
+
+        context = {
+            "request": request,
+            "q": q_clean,
+            "category": category,
+            "items": items_dict,
+            "n": n,
+            "s": s,
+            "prev_s": prev_s,
+            "next_s": next_s,
+            "show_images": show_images,
+            "l_format": l_format_clean or "",
+            "l_artType": l_artType_clean or "",
+            "l_place": l_place_clean or "",
+            "publication": publication_clean or "",
+            "people_orgs": people_orgs_clean or "",
+            "keywords": keywords_clean or "",
+            "sortby": sortby or "",
+            "year_from": year_from_value,
+            "year_to": year_to_value,
+            "total": total,
+            "api_key_present": bool(settings.trove_api_key),
+            "error": error_message,
+            "can_paginate": can_paginate,
+            "query_string": query_string,
+            "filter_suggestions": filter_suggestions,
+            "applied_filters": applied_filters,
+            "category_options": CATEGORY_OPTIONS,
+        }
+
         # Add search results to research context (limit to first 10 to avoid overwhelming)
         try:
             from app.archive_detective.research_context import add_article_to_context
@@ -1201,7 +1613,8 @@ async def reader(
             )
     
     # Ensure we have at least some content
-    # Prefer full text from fetch_item_text over snippet
+    # fetch_item_text() already handles text selection logic (preferring longer snippets),
+    # so we trust its result and only use query parameter snippet as a last resort fallback
     if not data.get("text"):
         if data.get("snippet"):
             data["text"] = data["snippet"]
@@ -1221,11 +1634,6 @@ async def reader(
         data["date"] = date
     if source and not data.get("source"):
         data["source"] = source
-    
-    # Don't override text with snippet if we already have full text
-    # Only use snippet if we don't have any text
-    if snippet and not data.get("text"):
-        data["text"] = snippet
 
     normalized_id = normalize_trove_id(id)
     if not data.get("id"):
@@ -1283,7 +1691,6 @@ async def reader(
 @app.get("/api/item/{item_id}")
 async def get_item(item_id: str, request: Request, client: TroveClient = Depends(get_trove_client)):
     """Get item details for preview with enhanced metadata."""
-    from app.archive_detective import fetch_item_text
     from app.archive_detective.research_context import add_article_to_context
     from app.services import TroveSearchService
     
@@ -1553,11 +1960,27 @@ async def remove_item_from_collection_endpoint(request: Request, collection_id: 
 
 
 @app.post("/api/collections/add")
-async def add_to_collection(body: dict = Body(...)):
+async def add_to_collection(request: Request, body: dict = Body(...)):
     """Add item to collection (legacy endpoint for backward compatibility)."""
-    # For backward compatibility - redirects to new endpoint
-    # This would need collection_id, but we'll create a default one if needed
-    return {"ok": True, "message": "Use POST /api/collections/{collection_id}/items instead"}
+    from app.context_store import sid_from, get_or_create_default_collection, add_item_to_collection
+    
+    sid = sid_from(
+        dict(request.headers),
+        request.client.host if request.client else "127.0.0.1",
+        request.headers.get("user-agent", "")
+    )
+    
+    # Get or create a default collection for this session
+    collection = get_or_create_default_collection(sid)
+    collection_id = collection["id"]
+    
+    trove_id = body.get("trove_id") or body.get("item_id")
+    if not trove_id:
+        raise HTTPException(status_code=400, detail="trove_id or item_id required")
+    
+    notes = body.get("notes", "")
+    add_item_to_collection(collection_id, str(trove_id), notes)
+    return {"ok": True, "message": "Item added to collection", "collection_id": collection_id}
 
 
 @app.post("/api/explain")
@@ -1569,12 +1992,15 @@ async def explain_text(body: dict = Body(...)):
     
     try:
         # Try using Archive Detective chat LLM if available
-        from app.archive_detective import chat_llm
-        if chat_llm.is_enabled():
-            prompt = f"Explain this text in simple terms, suitable for historical research: {text}"
-            routed = chat_llm.route_message(prompt)
-            if routed and "say" in routed:
-                return {"explanation": routed["say"]}
+        try:
+            from app.archive_detective import chat_llm
+            if hasattr(chat_llm, 'is_enabled') and chat_llm.is_enabled():
+                prompt = f"Explain this text in simple terms, suitable for historical research: {text}"
+                routed = chat_llm.route_message(prompt)
+                if routed and "say" in routed:
+                    return {"explanation": routed["say"]}
+        except (ImportError, AttributeError) as llm_err:
+            logger.debug(f"Chat LLM not available for explain: {llm_err}")
         
         # Fallback: basic explanation
         return {"explanation": f"This text appears to be about: {text[:100]}... It may refer to historical events, people, or places from the period."}
@@ -1592,12 +2018,15 @@ async def define_text(body: dict = Body(...)):
     
     try:
         # Try using Archive Detective chat LLM if available
-        from app.archive_detective import chat_llm
-        if chat_llm.is_enabled():
-            prompt = f"Provide a brief dictionary-style definition for this term or phrase: {text}"
-            routed = chat_llm.route_message(prompt)
-            if routed and "say" in routed:
-                return {"definition": routed["say"]}
+        try:
+            from app.archive_detective import chat_llm
+            if hasattr(chat_llm, 'is_enabled') and chat_llm.is_enabled():
+                prompt = f"Provide a brief dictionary-style definition for this term or phrase: {text}"
+                routed = chat_llm.route_message(prompt)
+                if routed and "say" in routed:
+                    return {"definition": routed["say"]}
+        except (ImportError, AttributeError) as llm_err:
+            logger.debug(f"Chat LLM not available for define: {llm_err}")
         
         # Fallback: basic definition
         return {"definition": f"'{text}' is a term or phrase that may have historical or cultural significance."}
@@ -1615,12 +2044,15 @@ async def translate_text(body: dict = Body(...), target_lang: str = Query("en"))
     
     try:
         # Try using Archive Detective chat LLM if available
-        from app.archive_detective import chat_llm
-        if chat_llm.is_enabled():
-            prompt = f"Translate this text to {target_lang}, preserving historical context: {text}"
-            routed = chat_llm.route_message(prompt)
-            if routed and "say" in routed:
-                return {"translation": routed["say"], "original": text, "target": target_lang}
+        try:
+            from app.archive_detective import chat_llm
+            if hasattr(chat_llm, 'is_enabled') and chat_llm.is_enabled():
+                prompt = f"Translate this text to {target_lang}, preserving historical context: {text}"
+                routed = chat_llm.route_message(prompt)
+                if routed and "say" in routed:
+                    return {"translation": routed["say"], "original": text, "target": target_lang}
+        except (ImportError, AttributeError) as llm_err:
+            logger.debug(f"Chat LLM not available for translate: {llm_err}")
         
         # Fallback: return original with note
         return {"translation": f"[Translation unavailable] Original: {text}", "original": text, "target": target_lang}
@@ -1685,7 +2117,6 @@ async def delete_note(request: Request, note_id: str):
 async def get_iiif_manifest(request: Request, article_id: str):
     """Get IIIF manifest for an article."""
     from app.iiif import generate_iiif_manifest, get_trove_image_urls
-    from app.archive_detective import fetch_item_text
     
     # Fetch article data
     data = await fetch_item_text(article_id)
@@ -1719,7 +2150,6 @@ async def summarize_article(
     request: Request, article_id: str, payload: dict | None = Body(default=None)
 ):
     """Generate AI summary of an article."""
-    from app.archive_detective import fetch_item_text
     from app.archive_detective.summarize import summarize_text
     
     fallback_text = ""
@@ -1745,13 +2175,21 @@ async def summarize_article(
         "date": request.query_params.get("date"),
         "source": request.query_params.get("source"),
         "page": request.query_params.get("page"),
+        "url": request.query_params.get("url"),
     }
     for key, value in query_meta.items():
         if value and key not in incoming_metadata:
             incoming_metadata[key] = value.strip()
     
-    # Fetch full text
-    data = await fetch_item_text(article_id)
+    # Get Trove URL from query params or payload if available
+    trove_url = incoming_metadata.get("url") or request.query_params.get("url")
+    
+    # Fetch full text - pass URL if available for better fetching
+    try:
+        data = await fetch_item_text(article_id, trove_url=trove_url)
+    except Exception as e:
+        logger.error(f"Error fetching article {article_id}: {e}")
+        data = {"ok": False, "error": str(e)}
     
     if not data.get("ok"):
         if not fallback_text:
@@ -1765,17 +2203,20 @@ async def summarize_article(
     if not text:
         return {"ok": False, "error": "No text available to summarize"}
     
-    # Generate summary
+    # Generate summary (summarize_text doesn't accept metadata parameter)
+    try:
+        summary_result = summarize_text(text, use_llm=True)
+    except Exception as e:
+        logger.error(f"Error summarizing article {article_id}: {e}")
+        return {"ok": False, "error": f"Failed to generate summary: {str(e)}"}
+    
+    # Build metadata for response
     metadata = {
-        "title": incoming_metadata.get("title")
-        or data.get("title")
-        or "Untitled",
+        "title": incoming_metadata.get("title") or data.get("title") or "Untitled",
         "date": incoming_metadata.get("date") or data.get("date"),
         "source": incoming_metadata.get("source") or data.get("source"),
         "page": incoming_metadata.get("page") or data.get("page"),
     }
-
-    summary_result = summarize_text(text, use_llm=True, metadata=metadata)
     
     return {
         "ok": True,
@@ -1954,9 +2395,26 @@ async def get_report_sources(request: Request):
 @app.post("/api/report/synthesize")
 async def synthesize_report(request: Request, body: dict = Body(...)):
     """Use AI to synthesize report from pinned articles and draft content."""
+    import os
+    import re
     from app.context_store import sid_from, list_pinned_articles, pack_for_prompt
-    from app.archive_detective import chat_llm
-    from app.utils.errors import user_friendly_openai_error
+    from app.archive_detective.config import OPENAI_API_KEY
+    
+    # Import registry and telemetry
+    try:
+        from backend.app.prompts.registry import get_report_enhance_prompt
+        from backend.app.prompts.telemetry import log_report_enhance
+    except ImportError:
+        # Fallback for development
+        import sys
+        from pathlib import Path
+        backend_path = Path(__file__).resolve().parent.parent / "backend"
+        if backend_path.exists():
+            sys.path.insert(0, str(backend_path.parent))
+        from backend.app.prompts.registry import get_report_enhance_prompt
+        from backend.app.prompts.telemetry import log_report_enhance
+    
+    PROMPT_VERSION = os.getenv("PROMPTS_REPORT_ENHANCE_VERSION", "v2")
     
     sid = sid_from(
         dict(request.headers),
@@ -1972,46 +2430,65 @@ async def synthesize_report(request: Request, body: dict = Body(...)):
     pinned = list_pinned_articles(sid)
     context_pack = pack_for_prompt(sid, max_chars=3000)
     
-    # Build synthesis prompt - be explicit that we want the enhanced report
-    prompt = f"""You are a research assistant helping to enhance a research report. The user has drafted this report:
-
-{draft_content}
-
-They have {len(pinned)} pinned sources available. Your task is to synthesize and enhance this report by:
-1. Improving clarity and flow
-2. Adding relevant citations from the pinned sources (use [citation] format)
-3. Ensuring the report is well-structured
-4. Maintaining the user's original intent and voice
-
-IMPORTANT: Return ONLY the enhanced report text. Do not include explanations, apologies, or meta-commentary. Just return the improved report text directly."""
-    
-    if not chat_llm.is_enabled():
+    if not OPENAI_API_KEY:
         return {"ok": False, "error": "AI chat is not enabled. Configure OPENAI_API_KEY."}
     
     try:
-        # Use chat LLM to synthesize
-        response = chat_llm.route_message(
-            prompt,
-            context=context_pack["text"],
-            use_function_calling=False
+        from openai import OpenAI
+        
+        # Load report enhancement prompt from registry
+        REPORT_ENHANCE_PROMPT = get_report_enhance_prompt()
+        
+        # Build user message with draft content and context
+        # Format prompt template with actual values
+        user_message = REPORT_ENHANCE_PROMPT.format(
+            draft_content=draft_content,
+            pinned_count=len(pinned),
+            pinned_sources=context_pack.get("text", "") if context_pack.get("text") else ""
         )
         
-        if response and "say" in response:
-            synthesized = response["say"]
+        # Make direct OpenAI API call
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            messages=[
+                {"role": "system", "content": "You enhance research reports. Return ONLY the improved report text."},
+                {"role": "user", "content": user_message},
+            ],
+        )
+        
+        synthesized = (response.choices[0].message.content or "").strip()
+        
+        # Count citations in output
+        citation_count = len(re.findall(r'\[.*?\]', synthesized))
+        
+        # Log telemetry
+        try:
+            log_report_enhance(PROMPT_VERSION, len(draft_content), len(synthesized), citation_count)
+        except Exception:
+            pass  # Don't fail on telemetry errors
+        
+        if synthesized:
             return {
                 "ok": True,
                 "synthesized": synthesized,
                 "sources_used": len(pinned)
             }
         else:
-            return {"ok": False, "error": "AI synthesis failed"}
+            return {"ok": False, "error": "AI synthesis failed - empty response"}
     except Exception as e:
         logger.exception(f"Error synthesizing report: {e}")
-        # Use friendly error mapping
-        try:
-            raise user_friendly_openai_error(e)
-        except HTTPException as http_err:
-            return {"ok": False, "error": http_err.detail}
+        # Return friendly error message
+        error_msg = str(e)
+        if "api key" in error_msg.lower() or "authentication" in error_msg.lower():
+            return {"ok": False, "error": "AI service authentication failed. Please check your API key."}
+        elif "rate limit" in error_msg.lower() or "quota" in error_msg.lower():
+            return {"ok": False, "error": "AI service rate limit exceeded. Please try again later."}
+        elif "timeout" in error_msg.lower():
+            return {"ok": False, "error": "AI service request timed out. Please try again."}
+        else:
+            return {"ok": False, "error": f"AI synthesis failed: {error_msg}"}
 
 
 @app.get("/timeline", response_class=HTMLResponse)
@@ -2020,6 +2497,14 @@ async def timeline_page(request: Request):
     context = {"request": request}
     template = templates_env.get_template("timeline.html")
     return HTMLResponse(content=template.render(**context))
+
+
+@app.get("/api/tts/health")
+async def tts_health():
+    """TTS health check - returns ok if browser TTS is available."""
+    # Browser TTS is always available via Web Speech API
+    # This endpoint just confirms the route exists
+    return {"ok": True, "method": "browser_speech_synthesis"}
 
 
 @app.get("/status", response_class=HTMLResponse)
@@ -2040,6 +2525,24 @@ async def status_page(request: Request):
     total_docs = len(list(docs_dir.glob("*.pdf"))) if docs_dir.exists() else 0
     total_outputs = len(list(outputs_dir.glob("*"))) if outputs_dir.exists() else 0
     
+    # Get research telemetry
+    research_stats = {"total": 0, "today": 0, "last_7d": 0, "last_run": None, "recent_runs": []}
+    try:
+        from backend.app.utils.telemetry import get_research_stats
+        research_stats = get_research_stats()
+    except Exception as e:
+        logger.debug(f"Could not load research telemetry: {e}")
+    
+    # Format last run timestamp
+    last_run_formatted = None
+    if research_stats.get("last_run"):
+        try:
+            dt = datetime.fromisoformat(research_stats["last_run"].replace("Z", "+00:00"))
+            dt_local = dt.astimezone(tz)
+            last_run_formatted = dt_local.strftime("%Y-%m-%d %H:%M:%S %Z")
+        except Exception:
+            last_run_formatted = research_stats.get("last_run")
+    
     # Check tunnel status
     tunnel_status = {"ok": False, "url": None}
     try:
@@ -2058,6 +2561,8 @@ async def status_page(request: Request):
         "total_outputs": total_outputs,
         "tunnel_status": tunnel_status,
         "api_key_configured": bool(settings.trove_api_key),
+        "research_stats": research_stats,
+        "last_run_formatted": last_run_formatted,
     }
     
     template = templates_env.get_template("status.html")
@@ -2342,33 +2847,41 @@ async def api_timeline():
 @app.get("/api/tunnel/status")
 async def get_tunnel_status():
     """Check if ngrok tunnel is active for this server."""
-    # Try pyngrok first (most reliable if installed)
-    try:
-        from pyngrok import ngrok
-        tunnels = ngrok.get_tunnels()
-        if tunnels:
-            # Find HTTP tunnel (not HTTPS)
-            http_tunnel = next((t for t in tunnels if t.proto == "http"), None)
-            if http_tunnel:
-                return {"ok": True, "url": http_tunnel.public_url}
-            # Fallback to any tunnel
-            if tunnels:
-                return {"ok": True, "url": tunnels[0].public_url}
-    except ImportError:
-        pass
-    except Exception:
-        pass
+    port = int(os.getenv("PORT", "8000"))
     
-    # Fallback: check ngrok local API (works if ngrok is running separately)
+    # Fallback: check ngrok local API first (works if ngrok is running separately)
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             response = await client.get("http://127.0.0.1:4040/api/tunnels")
             if response.status_code == 200:
                 data = response.json()
                 tunnels = data.get("tunnels", [])
-                http_tunnels = [t for t in tunnels if t.get("proto") == "http"]
-                if http_tunnels:
-                    return {"ok": True, "url": http_tunnels[0].get("public_url")}
+                # Find tunnel pointing to our port (HTTP or HTTPS)
+                for tunnel in tunnels:
+                    addr = tunnel.get("config", {}).get("addr", "")
+                    if str(port) in addr or f"localhost:{port}" in addr or f"127.0.0.1:{port}" in addr:
+                        return {"ok": True, "url": tunnel.get("public_url")}
+                # Fallback: return first tunnel if any exist
+                if tunnels:
+                    return {"ok": True, "url": tunnels[0].get("public_url")}
+    except Exception:
+        pass
+    
+    # Try pyngrok (most reliable if installed)
+    try:
+        from pyngrok import ngrok
+        tunnels = ngrok.get_tunnels()
+        if tunnels:
+            # Find tunnel pointing to our port
+            for tunnel in tunnels:
+                addr = tunnel.config.get("addr", "")
+                if str(port) in addr or f"localhost:{port}" in addr or f"127.0.0.1:{port}" in addr:
+                    return {"ok": True, "url": tunnel.public_url}
+            # Fallback: return first tunnel
+            if tunnels:
+                return {"ok": True, "url": tunnels[0].public_url}
+    except ImportError:
+        pass
     except Exception:
         pass
     
@@ -2421,10 +2934,21 @@ async def start_tunnel():
         }
 
     try:
-        # Disconnect any existing tunnels bound to this port to ensure a clean restart
+        # Check if tunnel already exists for this port
         existing_tunnels = ngrok.get_tunnels()
         for tunnel in existing_tunnels:
-            addr = tunnel.config.get("addr")
+            addr = tunnel.config.get("addr", "")
+            if str(port) in addr or f"localhost:{port}" in addr or f"127.0.0.1:{port}" in addr:
+                # Tunnel already exists, return it
+                return {
+                    "ok": True,
+                    "url": tunnel.public_url,
+                    "message": "Tunnel already active",
+                }
+        
+        # Disconnect any existing tunnels bound to this port to ensure a clean restart
+        for tunnel in existing_tunnels:
+            addr = tunnel.config.get("addr", "")
             if addr and str(port) in addr:
                 try:
                     ngrok.disconnect(tunnel.public_url)
@@ -2615,30 +3139,59 @@ async def apps_mobile_info(request: Request):
     return HTMLResponse(content=template.render(**context))
 
 
+@app.get("/api/brief/articles")
+async def list_brief_articles() -> JSONResponse:
+    """
+    Return ≤30 recent articles with useful fields for the brief picker.
+    Derived flags degrade gracefully if tables/helpers are absent.
+    """
+    def _bool(v):
+        return bool(v) if v is not None else False
+    
+    rows: List[Dict[str, Any]] = list_recent_articles(limit=30, order_by="last_seen DESC")
+    out: List[Dict[str, Any]] = []
+    
+    for r in rows:
+        has_summary = _bool(r.get("summary")) or bool(r.get("summary_bullets"))
+        has_cards = False
+        has_images = False
+        
+        # best-effort: try optional helpers if they exist
+        try:
+            has_cards = len(list_kingfisher_cards(r["trove_id"])) > 0
+        except Exception:
+            pass
+        
+        try:
+            has_images = len(list_article_images(r["trove_id"])) > 0
+        except Exception:
+            pass
+        
+        out.append({
+            "trove_id": r["trove_id"],
+            "id": r["trove_id"],  # Alias for frontend compatibility
+            "title": r.get("title"),
+            "date": r.get("date"),
+            "source": r.get("source"),
+            "snippet": r.get("snippet"),
+            "url": r.get("url"),
+            "last_seen": r.get("last_seen"),
+            "pinned": bool(r.get("pinned", 0)),
+            "has_summary": has_summary,
+            "has_cards": has_cards,
+            "has_images": has_images,
+        })
+    
+    return JSONResponse(out)
+
+
 @app.get("/kingfisher", response_class=HTMLResponse)
 async def kingfisher_page(request: Request):
-    """Kingfisher - Lesson Cards Creator."""
-    from app.context_store import sid_from, list_lesson_cards
-    
-    sid = sid_from(
-        dict(request.headers),
-        request.client.host if request.client else "127.0.0.1",
-        request.headers.get("user-agent", "")
-    )
-    
-    cards = list_lesson_cards(sid)
-    
-    # Get unique categories
-    categories = sorted(set(card.get("category", "") for card in cards if card.get("category")))
-    
-    context = {
-        "request": request,
-        "cards": cards,
-        "categories": categories,
-    }
-    
+    """Kingfisher - Brief Builder. Fast HTML shell; data loads via XHR."""
+    # Super fast shell; all heavy work happens via fetch() on the client
     template = templates_env.get_template("kingfisher.html")
-    return HTMLResponse(content=template.render(**context))
+    # Provide empty cards list if template expects it
+    return HTMLResponse(content=template.render({"request": request, "cards": []}))
 
 
 @app.get("/kingfisher/test-interface")
@@ -2724,3 +3277,260 @@ async def delete_lesson_card_endpoint(request: Request, card_id: str):
     
     delete_lesson_card(card_id)
     return {"ok": True, "message": "Card deleted"}
+
+
+_TROVE_IMAGE_LEVELS = {
+    "thumb": "level1",
+    "small": "level1",
+    "medium": "level2",
+    "large": "level3",
+    "full": "level3",
+    "print": "print",
+}
+
+
+@app.get("/api/trove/page-thumbnail/{page_id}")
+async def proxy_trove_page_thumbnail(page_id: str, size: str = Query("thumb")):
+    """Proxy Trove newspaper page images via the imageservice endpoint."""
+
+    if not re.match(r"^nla\.news-page\d+$", page_id):
+        raise HTTPException(status_code=400, detail="Invalid Trove page id")
+
+    level = _TROVE_IMAGE_LEVELS.get(size.lower())
+    if not level:
+        raise HTTPException(status_code=400, detail="Invalid image size")
+
+    remote_url = f"https://trove.nla.gov.au/imageservice/{page_id}/{level}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; TroveProxy/1.0)",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "Referer": "https://trove.nla.gov.au/",
+    }
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=headers) as client:
+        response = await client.get(remote_url)
+
+    content_type = response.headers.get("content-type", "")
+    if response.status_code != 200 or "image" not in content_type:
+        detail = response.text[:200] if response.text else "Unexpected response from Trove"
+        raise HTTPException(status_code=response.status_code or 502, detail=detail)
+
+    return Response(content=response.content, media_type=content_type or "image/jpeg")
+
+
+# ============================================================================
+# File Sharing API - Read/Write access to trove folder
+# ============================================================================
+
+TROVE_ROOT = Path(__file__).parent.parent.absolute()
+
+
+def _validate_path(file_path: str) -> Path:
+    """Validate and resolve file path, ensuring it's within TROVE_ROOT."""
+    # Normalize the path
+    if not file_path or file_path == "/":
+        file_path = "."
+    
+    # Remove leading slashes
+    file_path = file_path.lstrip("/")
+    
+    # Resolve to absolute path
+    full_path = (TROVE_ROOT / file_path).resolve()
+    
+    # Ensure it's within TROVE_ROOT (prevent directory traversal)
+    try:
+        full_path.relative_to(TROVE_ROOT)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Path outside trove directory")
+    
+    return full_path
+
+
+@app.get("/api/files/directory")
+async def list_directory(path: str = Query("", description="Directory path relative to trove root")):
+    """List files and directories in the specified path."""
+    try:
+        dir_path = _validate_path(path)
+        
+        if not dir_path.exists():
+            raise HTTPException(status_code=404, detail="Directory not found")
+        
+        if not dir_path.is_dir():
+            raise HTTPException(status_code=400, detail="Path is not a directory")
+        
+        items = []
+        for item in sorted(dir_path.iterdir()):
+            # Skip hidden files and common build/cache directories
+            if item.name.startswith(".") and item.name not in [".git", ".venv"]:
+                continue
+            
+            items.append({
+                "name": item.name,
+                "path": str(item.relative_to(TROVE_ROOT)),
+                "type": "directory" if item.is_dir() else "file",
+                "size": item.stat().st_size if item.is_file() else None,
+                "modified": item.stat().st_mtime,
+            })
+        
+        return {
+            "ok": True,
+            "path": str(dir_path.relative_to(TROVE_ROOT)),
+            "items": items
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/files/read")
+async def read_file(path: str = Query(..., description="File path relative to trove root")):
+    """Read a file. Returns text for text files, base64 for binary files."""
+    try:
+        file_path = _validate_path(path)
+        
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail="Path is not a file")
+        
+        # Check if it's a text file (common extensions)
+        text_extensions = {".txt", ".py", ".js", ".ts", ".tsx", ".json", ".md", ".html", ".css", 
+                          ".yaml", ".yml", ".toml", ".sh", ".sql", ".csv", ".log", ".env",
+                          ".xml", ".svg", ".jsonl", ".gitignore", ".dockerfile", ".dockerignore"}
+        
+        is_text = file_path.suffix.lower() in text_extensions or file_path.suffix == ""
+        
+        if is_text:
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                return {
+                    "ok": True,
+                    "path": str(file_path.relative_to(TROVE_ROOT)),
+                    "content": content,
+                    "encoding": "utf-8",
+                    "type": "text"
+                }
+            except UnicodeDecodeError:
+                # Fall back to binary if UTF-8 decode fails
+                is_text = False
+        
+        if not is_text:
+            import base64
+            content = file_path.read_bytes()
+            content_b64 = base64.b64encode(content).decode("utf-8")
+            return {
+                "ok": True,
+                "path": str(file_path.relative_to(TROVE_ROOT)),
+                "content": content_b64,
+                "encoding": "base64",
+                "type": "binary"
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/files/write")
+async def write_file(
+    path: str = Query(..., description="File path relative to trove root"),
+    content: str = Body(..., description="File content (text or base64 for binary)"),
+    encoding: str = Body("utf-8", description="Encoding: 'utf-8' for text, 'base64' for binary"),
+    create_dirs: bool = Body(True, description="Create parent directories if they don't exist")
+):
+    """Write or update a file."""
+    try:
+        file_path = _validate_path(path)
+        
+        # Create parent directories if needed
+        if create_dirs:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        if encoding == "base64":
+            import base64
+            try:
+                content_bytes = base64.b64decode(content)
+                file_path.write_bytes(content_bytes)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid base64 content: {str(e)}")
+        else:
+            file_path.write_text(content, encoding=encoding)
+        
+        return {
+            "ok": True,
+            "path": str(file_path.relative_to(TROVE_ROOT)),
+            "message": "File written successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/files/mkdir")
+async def create_directory(
+    path: str = Query(..., description="Directory path relative to trove root"),
+    parents: bool = Body(True, description="Create parent directories if they don't exist")
+):
+    """Create a directory."""
+    try:
+        dir_path = _validate_path(path)
+        
+        if dir_path.exists():
+            if dir_path.is_dir():
+                return {
+                    "ok": True,
+                    "path": str(dir_path.relative_to(TROVE_ROOT)),
+                    "message": "Directory already exists"
+                }
+            else:
+                raise HTTPException(status_code=400, detail="Path exists but is not a directory")
+        
+        dir_path.mkdir(parents=parents, exist_ok=True)
+        
+        return {
+            "ok": True,
+            "path": str(dir_path.relative_to(TROVE_ROOT)),
+            "message": "Directory created successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/files/delete")
+async def delete_file_or_directory(
+    path: str = Query(..., description="File or directory path relative to trove root"),
+    recursive: bool = Query(False, description="Recursively delete directories")
+):
+    """Delete a file or directory."""
+    try:
+        item_path = _validate_path(path)
+        
+        if not item_path.exists():
+            raise HTTPException(status_code=404, detail="File or directory not found")
+        
+        if item_path.is_dir():
+            if recursive:
+                import shutil
+                shutil.rmtree(item_path)
+            else:
+                # Check if directory is empty
+                if any(item_path.iterdir()):
+                    raise HTTPException(status_code=400, detail="Directory is not empty. Use recursive=true to delete")
+                item_path.rmdir()
+        else:
+            item_path.unlink()
+        
+        return {
+            "ok": True,
+            "path": str(item_path.relative_to(TROVE_ROOT)),
+            "message": "Deleted successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

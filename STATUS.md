@@ -1,18 +1,32 @@
-# Archive Detective - Running Status ✅
+# Trove - System Status Report
+
+**Last Updated:** 2025
 
 ## ✅ What's Running
 
-### Backend API
+### Main Web Application (Port 8000)
+- **Status**: ✅ Running on http://127.0.0.1:8000
+- **Dashboard**: http://127.0.0.1:8000/dashboard
+- **API Docs**: http://127.0.0.1:8000/docs (Swagger UI)
+- **Health**: `/health`, `/healthz`, `/ready` endpoints available
+- **Total Routes**: 58+ registered endpoints
+
+### Archive Detective API (Port 8001)
 - **Status**: ✅ Running on http://127.0.0.1:8001
 - **API Docs**: http://127.0.0.1:8001/docs (Swagger UI)
 - **Demo Page**: file:///home/lucifer/Projects/trove/apps/api/demo.html
 
 ### Features Working
-✅ Trove search - Returns newspaper articles from Australian archives
-✅ API endpoints - All endpoints functional
-✅ QR code generation - For tunnel/connection sharing
-✅ Tunnel management - ngrok integration ready
-✅ Sensitive Research Mode - Historical term expansion (opt-in)
+✅ **Main Web App** - 12 pages, full-featured research platform
+✅ **Trove Search** - Advanced multi-category search with filters
+✅ **Context Tracking** - SQLite-based article tracking with pinning
+✅ **AI Chat** - Context-aware research assistant
+✅ **Text-to-Speech** - Read articles aloud
+✅ **Report Generation** - PDF reports with summaries
+✅ **Archive Detective API** - Mobile/automation backend
+✅ **QR Code Generation** - For tunnel/connection sharing
+✅ **Tunnel Management** - ngrok integration ready
+✅ **Sensitive Research Mode** - Historical term expansion (opt-in)
 
 ## 🎯 Test Results
 
@@ -88,6 +102,32 @@ curl -X POST http://127.0.0.1:8001/api/trove/search \
 5. **Tunnel Sharing** - QR codes for cross-network access
 6. **AI Summaries** - Get concise summaries (if OpenAI key set)
 
+## 📊 System Components
+
+### Main Web Application
+- **Framework**: FastAPI 0.115+
+- **Database**: SQLite (context.db) with WAL mode
+- **Templates**: 12 HTML pages
+- **Static Assets**: CSS, JavaScript
+- **Type Safety**: Full type hints, Pydantic v2
+
+### Archive Detective API
+- **Framework**: FastAPI
+- **Purpose**: Mobile/automation backend
+- **Endpoints**: Search, article fetch, PDF, summaries
+
+### Mobile Application
+- **Framework**: Expo React Native
+- **Status**: Available (requires Node 18)
+- **Platforms**: iOS + Android
+
+## 🎉 Status: **FULLY OPERATIONAL**
+
 Everything is working! 🎉
+
+For complete system details, see:
+- `COMPREHENSIVE_BUILD_REPORT.md` - Complete build inventory
+- `FEATURES.md` - Detailed features list
+- `VISION.md` - Project vision and workflows
 
 

@@ -1,0 +1,2 @@
+{"ts": "2025-11-12T08:49:00.019141Z", "prompt_version": "v2", "input_summary": "test query", "output_schema_ok": true, "notes": {"chosen_action": "command", "has_command": true, "has_say": false}}
+{"ts": "2025-11-12T08:49:13.731930Z", "prompt_version": "v2", "input_summary": "test query", "output_schema_ok": true, "notes": {"chosen_action": "command", "has_command": true, "has_say": false}}

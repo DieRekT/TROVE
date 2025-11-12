@@ -27,9 +27,11 @@ class Settings(BaseSettings):
     app_title: str = Field(default="Trove Fetcher", description="Application title")
     app_version: str = Field(default="2.0.0", description="Application version")
     debug: bool = Field(default=False, description="Debug mode")
-
-    # Pexels (optional)
-    pexels_api_key: str | None = Field(default=None, description="Pexels API key")
+    
+    # Logging Configuration
+    log_level: str = Field(default="INFO", description="Log level (DEBUG, INFO, WARNING, ERROR)")
+    log_json: bool = Field(default=True, description="Use JSON log format")
+    log_file: str | None = Field(default=None, description="Optional log file path")
 
 
 @lru_cache

@@ -3,10 +3,15 @@
 ## 🌐 Web Pages & Routes
 
 ### Main Pages
-- **`/`** - Main search page with advanced filters
-- **`/chat`** - Archive Detective chat interface
-- **`/reporter`** - Report preview and PDF generation page
-- **`/status`** - Status page showing all generated files
+- **`/` or `/dashboard`** - Home dashboard with overview and quick actions
+- **`/search`** - Advanced two-pane search interface with filters
+- **`/reader?id=...`** - Article reader with full text and TTS
+- **`/chat`** - Archive Detective chat interface with context awareness
+- **`/desk`** - Research desk with citations panel
+- **`/collections`** - Collections board for article organization
+- **`/studio`** - Report studio for drafting and PDF generation
+- **`/timeline`** - Timeline view for chronological organization
+- **`/status`** - System status page with health checks
 - **`/health`** - Health check endpoint
 
 ## 🔍 Search Features
@@ -129,13 +134,42 @@
 - **Sticky Elements**: Header and input bar stay visible
 - **Touch-Friendly**: Large touch targets
 
+## 📌 Context Tracking & Pinning
+
+### Context Store System
+- **Automatic Tracking** - Articles automatically tracked when viewed
+- **SQLite Persistence** - Context survives server restarts
+- **Session Management** - IP+User-Agent based sessions
+- **Pin/Unpin** - Mark important articles for AI citation
+- **View Counting** - Track article views
+- **Context Packing** - Formatted context for AI (≤3500 chars)
+- **Max Articles** - 50 articles per session (configurable)
+
+### Context API Endpoints
+- **`GET /api/context`** - Get tracked articles
+- **`POST /api/context/track`** - Track an article
+- **`POST /api/context/pin/{id}`** - Pin article
+- **`POST /api/context/unpin/{id}`** - Unpin article
+- **`GET /api/context/pack`** - Get formatted context for AI
+- **`DELETE /api/context`** - Clear session
+
+### Pin Features
+- **Pin Buttons** - On search results, preview drawer, reader
+- **Visual Feedback** - Pin state indicators (📌 → 📌✅)
+- **Toast Notifications** - User feedback on pin/unpin
+- **Auto-tracking** - Articles tracked on view, pin for importance
+
 ## 🔧 Technical Features
 
 ### API Endpoints
 
 #### Search & Articles
-- **`GET /`** - Main search page
-- **`GET /api/trove/item_text?id=...`** - Fetch article full text
+- **`GET /dashboard`** - Home dashboard
+- **`GET /search`** - Advanced search interface
+- **`GET /reader`** - Article reader page
+- **`GET /api/item/{item_id}`** - Get article details
+- **`GET /api/item/{item_id}/images`** - Get article images
+- **`POST /api/item/{item_id}/refresh-images`** - Refresh article images
 - **`POST /api/summarize`** - Summarize text
 - **`POST /api/chat`** - Chat endpoint (all commands)
 
@@ -148,12 +182,36 @@
 #### Images
 - **`GET /files/images/<filename>`** - Access saved images
 
+#### Collections
+- **`GET /api/collections`** - Get all collections
+- **`POST /api/collections`** - Create collection
+- **`GET /api/collections/{collection_id}`** - Get collection
+- **`POST /api/collections/{collection_id}/items`** - Add items to collection
+- **`POST /api/collections/add`** - Quick add to collection
+
+#### Notes
+- **`POST /api/notes/add`** - Add note to article
+- **`GET /api/notes/{article_id}`** - Get notes for article
+
+#### Kingfisher Brief
+- **`POST /api/kingfisher/brief`** - Generate brief
+- **`GET /api/kingfisher/brief/{brief_id}`** - Get brief
+- **`POST /api/kingfisher/cards`** - Process cards
+- **`GET /api/kingfisher/cards`** - Get cards
+- **`POST /api/kingfisher/summarize`** - Summarize cards
+- **`GET /pin/{trove_id}`** - Get pin metadata
+- **`GET /cards/{trove_id}`** - Get cards for article
+- **`POST /summarize-pin/{trove_id}`** - Summarize and pin
+
 #### System
 - **`GET /health`** - Health check
+- **`GET /healthz`** - Alternative health check
+- **`GET /ready`** - Readiness check
 - **`GET /api/local-ip`** - Get local network IP
 - **`GET /api/qrcode`** - Generate QR code
 - **`GET /api/tunnel/status`** - Check tunnel status
 - **`POST /api/tunnel/start`** - Start ngrok tunnel
+- **`GET /iiif/manifest/{article_id}`** - IIIF manifest
 
 ### File Management
 
@@ -205,11 +263,20 @@
 - **Summarization**: LLM-based article summaries
 - **Action-Oriented**: Executes commands immediately
 - **Context Awareness**: Understands user intent
+- **Research Context**: Uses tracked articles as context in prompts
+- **Article References**: AI can cite articles from your research
+
+### Context-Aware AI
+- **Automatic Context**: All tracked articles included in AI prompts
+- **Pin Priority**: Pinned articles prioritized in context
+- **Context Formatting**: Compact bibliography format (≤3500 chars)
+- **Session-Based**: Context scoped to user session
 
 ### Fallback Systems
 - **Extractive Summarization**: Works without OpenAI
 - **Smart Search Detection**: Keyword-based fallback
 - **Error Handling**: Graceful degradation
+- **No OpenAI Required**: Core features work without API key
 
 ## 🔐 Security & Configuration
 

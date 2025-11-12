@@ -1,0 +1,532 @@
+{
+  "generated_at": "2025-11-12T03:27:11.577777Z",
+  "session_id": "seed-sample-session",
+  "topics": [
+    "great barrier reef conservation",
+    "australian women's suffrage campaign",
+    "snowy mountains scheme inauguration"
+  ],
+  "endpoint_results": {
+    "search": [
+      {
+        "status": 200,
+        "html_length": 83461,
+        "query": "great barrier reef conservation"
+      },
+      {
+        "status": 200,
+        "html_length": 83432,
+        "query": "australian women's suffrage campaign"
+      },
+      {
+        "status": 200,
+        "html_length": 83309,
+        "query": "snowy mountains scheme inauguration"
+      }
+    ],
+    "articles": {
+      "184199164": {
+        "pin": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "cards": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "summary": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "brief": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        }
+      },
+      "217845321": {
+        "pin": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "cards": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "summary": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "brief": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        }
+      },
+      "201938475": {
+        "pin": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "cards": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "summary": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "brief": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        }
+      },
+      "208877120": {
+        "pin": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "cards": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "summary": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "brief": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        }
+      },
+      "235667890": {
+        "pin": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "cards": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "summary": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "brief": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        }
+      },
+      "245880112": {
+        "pin": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "cards": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "summary": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        },
+        "brief": {
+          "status": 404,
+          "data": {
+            "detail": "Article could not be retrieved"
+          },
+          "error": "{\"detail\":\"Article could not be retrieved\"}"
+        }
+      }
+    },
+    "brief_articles": {
+      "status": 400,
+      "data": {
+        "detail": "Invalid Trove identifier"
+      },
+      "error": "{\"detail\":\"Invalid Trove identifier\"}"
+    },
+    "health": {
+      "status": 200,
+      "data": {
+        "status": "ok",
+        "service": "trove",
+        "version": "2.0.0",
+        "api_configured": true
+      }
+    }
+  },
+  "stored_articles": [
+    {
+      "trove_id": "201938475",
+      "title": "Delegation Carries Suffrage Petition",
+      "date": "1893-07-28",
+      "source": "The Advertiser (Adelaide, SA)",
+      "url": "https://nla.gov.au/nla.news-article201938475",
+      "snippet": "South Australian suffragists presented a petition with over 11,000 signatures to parliament.",
+      "full_text": "The Women's Suffrage League delivered a petition exceeding 11,000 signatures to the South Australian Parliament, arguing that women's enfranchisement would strengthen democratic principles and improve social legislation.",
+      "summary": "South Australian suffragists advanced a mass petition advocating for women's enfranchisement.",
+      "summary_bullets": [
+        "Petition surpassed 11,000 signatures.",
+        "Mary Lee highlighted equity and civic duty."
+      ],
+      "pinned": 1,
+      "views": 9,
+      "first_seen": 1762904581.7973745,
+      "last_seen": 1762917958.0
+    },
+    {
+      "trove_id": "235667890",
+      "title": "Prime Minister Launches Snowy Scheme",
+      "date": "1949-10-17",
+      "source": "The Canberra Times (ACT)",
+      "url": "https://nla.gov.au/nla.news-article235667890",
+      "snippet": "Prime Minister Ben Chifley officially inaugurated the Snowy Mountains Hydro-Electric Scheme.",
+      "full_text": "A crowd gathered at Adaminaby to witness Prime Minister Ben Chifley commence construction of the Snowy Mountains Hydro-Electric Scheme. The project promised irrigation for inland farming and renewable electricity for post-war industry.",
+      "summary": "Ben Chifley opened the Snowy Mountains Scheme, promising power and irrigation for the nation.",
+      "summary_bullets": [
+        "Inaugural ceremony held at Adaminaby.",
+        "Project positioned as post-war reconstruction effort."
+      ],
+      "pinned": 1,
+      "views": 9,
+      "first_seen": 1762904583.6344168,
+      "last_seen": 1762917958.0
+    },
+    {
+      "trove_id": "184199164",
+      "title": "Scientists Warn Of Reef Bleaching",
+      "date": "1922-03-15",
+      "source": "The Argus (Melbourne, Vic.)",
+      "url": "https://nla.gov.au/nla.news-article184199164",
+      "snippet": "Marine biologists report unprecedented coral bleaching across key sections of the Great Barrier Reef.",
+      "full_text": "Marine biologists stationed along the Barrier Reef reported extensive bleaching following a month of exceptionally warm waters. Conservation groups urged federal support for monitoring programs and highlighted the need for temperature records.",
+      "summary": "Survey teams observed bleaching across thirty reef locations after anomalous warm currents.",
+      "summary_bullets": [
+        "Federal funding requested for reef monitoring.",
+        "Heat anomalies linked to widespread bleaching.",
+        "Calls for national conservation coordination."
+      ],
+      "pinned": 1,
+      "views": 9,
+      "first_seen": 1762904580.3600318,
+      "last_seen": 1762917957.0
+    },
+    {
+      "trove_id": "245880112",
+      "title": "Engineers Outline Multicultural Workforce",
+      "date": "1952-06-01",
+      "source": "The Sun (Sydney, NSW)",
+      "url": "https://nla.gov.au/nla.news-article245880112",
+      "snippet": "Snowy Mountains Authority reported on its international engineering teams and worker villages.",
+      "full_text": "The Snowy Mountains Authority detailed the contributions of migrants from more than twenty nations. New worker housing, technical colleges, and safety programs underscored the scheme's scale.",
+      "summary": "Progress updates highlighted international labour, training, and housing supporting Snowy works.",
+      "summary_bullets": [
+        "Authority credited migrant engineers.",
+        "Training colleges expanded technical capacity."
+      ],
+      "pinned": 0,
+      "views": 9,
+      "first_seen": 1762904584.0088475,
+      "last_seen": 1762917960.0
+    },
+    {
+      "trove_id": "208877120",
+      "title": "Federation Convention Debates Women's Vote",
+      "date": "1902-03-05",
+      "source": "The Sydney Morning Herald (NSW)",
+      "url": "https://nla.gov.au/nla.news-article208877120",
+      "snippet": "Delegates discussed incorporating women's suffrage into the Commonwealth franchise legislation.",
+      "full_text": "Parliamentary debates in Melbourne grappled with ensuring women across the new Commonwealth would enjoy a uniform franchise. Proponents cited New Zealand's example and the success of South Australia's reforms.",
+      "summary": "Commonwealth parliament considered universal suffrage, building on earlier colonial reforms.",
+      "summary_bullets": [
+        "Delegates referenced New Zealand's precedent.",
+        "Advocates argued for national consistency."
+      ],
+      "pinned": 0,
+      "views": 9,
+      "first_seen": 1762904583.4066694,
+      "last_seen": 1762917958.0
+    },
+    {
+      "trove_id": "217845321",
+      "title": "Queensland Communities Rally For Reef",
+      "date": "1954-09-02",
+      "source": "The Courier-Mail (Brisbane, Qld.)",
+      "url": "https://nla.gov.au/nla.news-article217845321",
+      "snippet": "Local councils coordinated a letter-writing campaign urging reef protections amid tourism expansion.",
+      "full_text": "Representatives from coastal shires met in Townsville to address reef preservation. They resolved to lobby the Commonwealth for stricter fishing controls and education campaigns aimed at visiting tourists and shipping companies.",
+      "summary": "Queensland councils organised coordinated advocacy for reef protections amid tourism growth.",
+      "summary_bullets": [
+        "Regional alliance formed to lobby Canberra.",
+        "Tourism pressures identified as emerging risk."
+      ],
+      "pinned": 0,
+      "views": 9,
+      "first_seen": 1762904581.1176677,
+      "last_seen": 1762917957.0
+    }
+  ],
+  "stored_cards": {
+    "201938475": [
+      {
+        "id": "7567a5c8-d5de-47ac-aef8-2bfcdee85e75",
+        "article_id": "201938475",
+        "type": "person",
+        "title": "Mary Lee",
+        "content": "Veteran organiser who coordinated rural petition drives for the suffrage campaign.",
+        "metadata": {
+          "role": "Suffrage organiser"
+        },
+        "created_at": 1762917958.1572351,
+        "updated_at": 1762917958.1572351
+      },
+      {
+        "id": "b1a941d5-f405-4af1-a473-caa22f865930",
+        "article_id": "201938475",
+        "type": "quote",
+        "title": "Call For Equality",
+        "content": "\"We claim the vote as a matter of simple justice.\"",
+        "metadata": {
+          "speaker": "Mary Lee"
+        },
+        "created_at": 1762917958.1572351,
+        "updated_at": 1762917958.1572351
+      },
+      {
+        "id": "de49f79c-171e-4b7b-ba29-0b6f55ded956",
+        "article_id": "201938475",
+        "type": "event",
+        "title": "Petition Presented",
+        "content": "A petition with 11,000 signatures reached the South Australian House of Assembly.",
+        "metadata": {
+          "year": 1893
+        },
+        "created_at": 1762917958.1572351,
+        "updated_at": 1762917958.1572351
+      }
+    ],
+    "235667890": [
+      {
+        "id": "a700ad50-0802-4b54-9eca-3637ecb9d10b",
+        "article_id": "235667890",
+        "type": "event",
+        "title": "Snowy Scheme Inauguration",
+        "content": "Prime Minister Ben Chifley initiated the Snowy Mountains works at Adaminaby.",
+        "metadata": {
+          "year": 1949
+        },
+        "created_at": 1762917958.99036,
+        "updated_at": 1762917958.99036
+      },
+      {
+        "id": "aad469b2-794e-4f40-ae82-bdf3ad5daae5",
+        "article_id": "235667890",
+        "type": "person",
+        "title": "Ben Chifley",
+        "content": "Australian Prime Minister advocating for nation-building hydroelectric infrastructure.",
+        "metadata": {
+          "role": "Prime Minister"
+        },
+        "created_at": 1762917958.99036,
+        "updated_at": 1762917958.99036
+      },
+      {
+        "id": "b9c65831-6cf2-44db-a34d-4b642dd61298",
+        "article_id": "235667890",
+        "type": "place",
+        "title": "Adaminaby Ceremony Ground",
+        "content": "Site where the inaugural blasting commenced the Snowy Mountains Scheme.",
+        "metadata": {
+          "state": "New South Wales"
+        },
+        "created_at": 1762917958.99036,
+        "updated_at": 1762917958.99036
+      }
+    ],
+    "184199164": [
+      {
+        "id": "01425b9c-285c-4b9b-96a9-ab78184aa472",
+        "article_id": "184199164",
+        "type": "event",
+        "title": "Bleaching Survey Conducted",
+        "content": "A coordinated survey documented coral bleaching across thirty reef sites after prolonged heat.",
+        "metadata": {
+          "year": 1922,
+          "location": "Great Barrier Reef"
+        },
+        "created_at": 1762917957.3023705,
+        "updated_at": 1762917957.3023705
+      },
+      {
+        "id": "094c35e1-29be-472d-a57c-6f1c518a4a56",
+        "article_id": "184199164",
+        "type": "quote",
+        "title": "Urgent Plea",
+        "content": "\"Without timely intervention, we risk losing the reef that defines our northern coastline.\"",
+        "metadata": {
+          "speaker": "Dr. Edith McKellar"
+        },
+        "created_at": 1762917957.3023705,
+        "updated_at": 1762917957.3023705
+      },
+      {
+        "id": "0f439f66-0888-48db-8096-7416238de8ea",
+        "article_id": "184199164",
+        "type": "person",
+        "title": "Dr. Edith McKellar",
+        "content": "Marine biologist advocating for federal conservation funding and continuous reef observation.",
+        "metadata": {
+          "role": "Marine biologist"
+        },
+        "created_at": 1762917957.3023705,
+        "updated_at": 1762917957.3023705
+      }
+    ],
+    "245880112": [
+      {
+        "id": "b86869fa-ea20-4f45-8347-37e3659af7cd",
+        "article_id": "245880112",
+        "type": "quote",
+        "title": "Engineering Collaboration",
+        "content": "\"The Snowy is a meeting of nations in pursuit of shared prosperity.\"",
+        "metadata": {
+          "speaker": "Snowy Mountains Authority"
+        },
+        "created_at": 1762917960.488576,
+        "updated_at": 1762917960.488576
+      },
+      {
+        "id": "c333f569-cde7-417d-a4a1-be058ae1fc83",
+        "article_id": "245880112",
+        "type": "event",
+        "title": "Progress Report Released",
+        "content": "The Authority emphasised migrant expertise and training facilities supporting the scheme.",
+        "metadata": {
+          "year": 1952
+        },
+        "created_at": 1762917960.488576,
+        "updated_at": 1762917960.488576
+      }
+    ],
+    "208877120": [
+      {
+        "id": "286fb734-8a15-49f8-9eff-bc59a08168e1",
+        "article_id": "208877120",
+        "type": "person",
+        "title": "Vida Goldstein",
+        "content": "Campaigner observing the federal debates and lobbying delegates for a universal vote.",
+        "metadata": {
+          "role": "Advocate"
+        },
+        "created_at": 1762917958.6344607,
+        "updated_at": 1762917958.6344607
+      },
+      {
+        "id": "3236ecaf-b415-48b3-b4b9-fd0da0b513f2",
+        "article_id": "208877120",
+        "type": "event",
+        "title": "Commonwealth Franchise Bill Debate",
+        "content": "Federal legislators debated including women's suffrage in the new franchise act.",
+        "metadata": {
+          "year": 1902
+        },
+        "created_at": 1762917958.6344607,
+        "updated_at": 1762917958.6344607
+      }
+    ],
+    "217845321": [
+      {
+        "id": "495f3cd5-734f-4486-9088-c31f5962d86a",
+        "article_id": "217845321",
+        "type": "place",
+        "title": "Townsville Shire Hall",
+        "content": "Venue for the Queensland coastal symposium on reef safeguards.",
+        "metadata": {
+          "state": "Queensland"
+        },
+        "created_at": 1762917957.849105,
+        "updated_at": 1762917957.849105
+      },
+      {
+        "id": "c8a4521c-8646-4744-9e46-22c739eb6077",
+        "article_id": "217845321",
+        "type": "event",
+        "title": "Townsville Preservation Meeting",
+        "content": "Coastal shires met in Townsville to petition for national reef protections.",
+        "metadata": {
+          "year": 1954
+        },
+        "created_at": 1762917957.849105,
+        "updated_at": 1762917957.849105
+      }
+    ]
+  }
+}

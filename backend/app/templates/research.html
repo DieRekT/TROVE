@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Deep Research - Troveing{% endblock %}
+{% block page_title %}Deep Research{% endblock %}
+{% block content %}
+<div class="research-container">
+  <div class="research-form-section">
+    <h2>Start Deep Research</h2>
+    <form id="researchForm" class="research-form">
+      <div class="form-group">
+        <label for="question">Research Question *</label>
+        <textarea id="question" name="question" rows="3" required 
+                  placeholder="e.g., History of phosphate mining approvals in NSW's North Coast (1970–1995)">{{ seed_query }}</textarea>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="region">Region (optional)</label>
+          <input type="text" id="region" name="region" 
+                 placeholder="e.g., Clarence Valley, NSW" value="Clarence Valley, NSW">
+        </div>
+        
+        <div class="form-group">
+          <label for="time_window">Time Window (optional)</label>
+          <input type="text" id="time_window" name="time_window" 
+                 placeholder="e.g., 1970–1995 or last 5 years">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="depth">Research Depth</label>
+        <div class="radio-group">
+          <label><input type="radio" name="depth" value="brief" id="depth-brief"> Brief</label>
+          <label><input type="radio" name="depth" value="standard" id="depth-standard" checked> Standard</label>
+          <label><input type="radio" name="depth" value="deep" id="depth-deep"> Deep</label>
+        </div>
+      </div>
+      
+      <button type="submit" class="btn-primary" id="startBtn">Start Research</button>
+    </form>
+    
+    <div class="sample-queries" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border, #e0e0e0);">
+      <p style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: var(--muted, #666);">Quick start:</p>
+      <button type="button" class="btn-secondary" id="sampleIluka" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+        🎯 Run sample: Iluka mining (1945–1980)
+      </button>
+    </div>
+  </div>
+  
+  <div class="research-progress-section" id="progressSection" style="display: none;">
+    <h2>Research Progress</h2>
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+      </div>
+      <div class="progress-text" id="progressText">0%</div>
+    </div>
+    <div class="progress-status" id="progressStatus">Initializing...</div>
+  </div>
+  
+  <div class="research-results-section" id="resultsSection" style="display: none;">
+    <h2>Research Findings</h2>
+    <div class="report-actions">
+      <a href="#" id="downloadMd" class="btn-secondary" download>Download Markdown</a>
+      <a href="#" id="downloadJsonl" class="btn-secondary" download>Download Evidence (JSONL)</a>
+    </div>
+    <div class="report-content" id="reportContent">
+      <p>Loading report...</p>
+    </div>
+  </div>
+</div>
+
+<link rel="stylesheet" href="{{ static_url(request, 'static/css/research.css') }}">
+<script src="{{ static_url(request, 'static/js/research.js') }}"></script>
+{% endblock %}
+

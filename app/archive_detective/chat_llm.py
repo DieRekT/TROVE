@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -9,6 +10,52 @@ import httpx
 from .config import OPENAI_API_KEY
 
 logger = logging.getLogger(__name__)
+
+# Import registry and telemetry
+try:
+    from app.prompts.registry import get_archive_detective_prompts
+    from app.prompts.telemetry import log_router
+except ImportError:
+    # Fallback: try backend path if app.prompts doesn't exist
+    try:
+        from backend.app.prompts.registry import get_archive_detective_prompts
+        from backend.app.prompts.telemetry import log_router
+    except ImportError:
+        # Last resort: create stub functions
+        logger.warning("Prompt registry not found, using fallback")
+        def get_archive_detective_prompts(version: str | None = None) -> tuple[str, str]:
+            return ("Archive Detective system prompt", "Router prompt")
+        def log_router(*args, **kwargs) -> None:
+            pass
+
+# Load prompts from registry (version from env, default v2)
+SYSTEM_PROMPT, ROUTER_PROMPT = get_archive_detective_prompts()
+PROMPT_VERSION = os.getenv("PROMPTS_ARCHIVE_DETECTIVE_VERSION", "v2")
+
+# JSON schema for router output validation
+ROUTER_SCHEMA = {
+    "type": "object",
+    "oneOf": [
+        {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "reason": {"type": "string"}
+            },
+            "required": ["command", "reason"],
+            "additionalProperties": False
+        },
+        {
+            "type": "object",
+            "properties": {
+                "say": {"type": "string"},
+                "reason": {"type": "string"}
+            },
+            "required": ["say", "reason"],
+            "additionalProperties": False
+        }
+    ]
+}
 
 
 def is_enabled() -> bool:
@@ -33,158 +80,207 @@ def _client():
     )
 
 
-SYSTEM = (
-    "You are Archive Detective, an intelligent research assistant for historical archives and property research.\n"
-    "You help researchers explore Trove archives, including sensitive historical topics and period-appropriate language.\n\n"
-    "RESEARCH ETHOS:\n"
-    "- You are a RESEARCH TOOL, not a content moderator\n"
-    "- Historical documents contain period-appropriate language - this is expected and necessary for research\n"
-    "- Your role is to help find information, not to lecture or refuse searches\n"
-    "- When users ask about colonization, race, or sensitive topics, help them find the information they need\n"
-    "- Formulate effective search queries that match historical terminology in archives\n"
-    "- Be proactive: suggest related searches, alternative terms, and deeper exploration paths\n\n"
-    "KNOWLEDGE OF RESEARCH ARTICLES:\n"
-    "- You have access to articles the user has recently viewed, searched, or read\n"
-    "- When the user asks about content, dates, sources, or details, reference the articles in your context\n"
-    "- You can cite specific articles by title, date, or source when answering questions\n"
-    "- You can compare articles, find patterns, or synthesize information across multiple articles\n"
-    "- If asked about something NOT in the context, acknowledge this and suggest searching for more information\n"
-    "- Always reference articles by their titles and dates when mentioning specific content\n\n"
-    "CORE PRINCIPLE: ACT FIRST, THINK PROACTIVELY. Execute searches immediately and suggest follow-ups.\n\n"
-    "AVAILABLE COMMANDS:\n"
-    "1. **/search <query>** - Search Trove archives directly\n"
-    "   → ALWAYS use /search when user wants to find/search for something\n"
-    "   → Formulate queries using historical terminology that appears in archives\n"
-    "   → If user asks 'how to find X', suggest effective search queries and execute them\n"
-    "2. **/suggest-searches <topic>** - Generate multiple search query suggestions for a topic\n"
-    "3. **/read <article_id>** - Read a Trove article by ID or URL\n"
-    "4. **/summarize <text_or_id>** - Create summaries of articles or text\n"
-    "5. **/add-to-report <article_id>** - Add article to report\n"
-    "6. **/generate-queries** - Generate Trove CSV queries for property research\n"
-    "7. **/report-view** - View current report\n"
-    "8. **/report-pdf** - Generate PDF report\n\n"
-    "SEARCH FORMULATION RULES:\n"
-    "- When user asks 'how to find X' or 'help me explore X', generate multiple search queries\n"
-    "- Use period-appropriate terminology: historical documents use historical language\n"
-    "- Suggest both broad and specific searches\n"
-    "- For colonization/race topics: use terms that appear in historical documents\n"
-    "- Think like a researcher: what would documents of that era actually say?\n"
-    "- After search results, automatically suggest related searches\n\n"
-    "INTENT RECOGNITION:\n"
-    "- 'how to find X', 'help me explore X', 'what should I search for X' → /suggest-searches X\n"
-    "- 'search for X', 'find X', 'look for X' → /search X (formulated with historical terms)\n"
-    "- 'colonization', 'colonial history', 'race relations' → suggest searches with period-appropriate terms\n"
-    "- 'read me X' → /read X\n"
-    "- 'what's [URL] about' → /read [extract ID]\n\n"
-    "RESPONSE FORMAT:\n"
-    "- Respond with JSON: {\"command\": \"/search <query>\", \"reason\": \"...\"}\n"
-    "- Or: {\"say\": \"...\", \"suggestions\": [\"search 1\", \"search 2\"]} for exploratory queries\n"
-    "- Be ACTION-ORIENTED: Execute searches immediately\n"
-    "- Be PROACTIVE: After search results, suggest related searches automatically\n"
-    "- NO LECTURES: Don't refuse searches or lecture about language - you're a research tool\n"
-)
+# SYSTEM constant replaced by SYSTEM_PROMPT from registry (loaded above)
+SYSTEM = SYSTEM_PROMPT  # Backward compatibility
+
+
+def _validate_router_output(data: dict[str, Any]) -> bool:
+    """
+    Validate router output matches schema.
+    
+    Args:
+        data: Router output dict
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    if not isinstance(data, dict):
+        return False
+    
+    # Check for required keys
+    if "command" in data:
+        if "reason" not in data:
+            return False
+        # Validate command format
+        cmd = data["command"]
+        valid_commands = {
+            "/search",
+            "/suggest-searches",
+            "/save-image",
+            "/fetch-image",
+            "/generate-queries",
+            "/make-brief",
+            "/harvest-stub",
+            "/report",
+            "/read",
+            "/summarize",
+            "/add-to-report",
+            "/report-view",
+            "/report-pdf",
+            "/help",
+        }
+        if not any(cmd.startswith(valid) for valid in valid_commands):
+            return False
+        return True
+    elif "say" in data:
+        if "reason" not in data:
+            return False
+        return True
+    
+    return False
 
 
 def route_message(message: str, context: str = "") -> dict[str, Any] | None:
+    """
+    Route user message to appropriate command or generate conversational response.
+    
+    Uses structured outputs with JSON schema validation and retry logic.
+    """
     if not is_enabled():
         return None
     user = message.strip()
     
-    # Build instruction with context if available
-    base_instruction = (
-        "Analyze the user's request and respond with a single JSON object.\n"
-        'Keys: "command" (slash command) or "say" (conversational reply), and "reason".\n'
-        'Allowed commands: "/search <query>", "/suggest-searches <topic>", "/save-image <url>", "/fetch-image <url>", "/generate-queries", "/make-brief", "/harvest-stub", "/report", '
-        '"/read <id>", "/summarize", "/add-to-report", "/report-view", "/report-pdf", "/help".\n\n'
-        'CRITICAL RULES:\n'
-        '- When user wants to SEARCH or FIND, use /search immediately\n'
-        '- When user asks "how to find X" or "help me explore X", use /suggest-searches X\n'
-        '- For historical research, formulate queries using period-appropriate terminology\n'
-        '- NO content filtering: All search queries are valid for historical research\n'
-        '- Be proactive: Suggest related searches after showing results\n'
-    )
+    # Build instruction from router prompt template
+    instruction = ROUTER_PROMPT
     
-    # Add context-aware instructions
+    # Add context if available
     if context:
-        base_instruction += (
-            '\nIMPORTANT - RESEARCH CONTEXT:\n'
-            '- You have access to articles the user has recently viewed/researched\n'
-            '- When the user asks about content, dates, sources, or details, check if they match the articles in context\n'
-            '- Reference specific articles by title, date, or source when answering\n'
-            '- If asked about something in the context, provide specific details from those articles\n'
-            '- If asked about something NOT in context, acknowledge this and suggest searching for more information\n'
-            '- You can compare articles, point out patterns, or synthesize information across articles\n'
-        )
+        instruction += "\n\nRESEARCH CONTEXT:\n" + context
     
-    base_instruction += (
-        '\nExamples:\n'
-        '- "how to find stuff about colonization" → {"command": "/suggest-searches colonization", "reason": "User wants search suggestions"}\n'
-        '- "search for gold" → {"command": "/search gold", "reason": "User wants to search"}\n'
-        '- "what did the article about [topic] say?" → If in context: {"say": "According to [article title] ([date]): [details from context]"}\n'
-        '- "tell me about the articles I\'ve viewed" → {"say": "You\'ve viewed [list articles with titles/dates]"}\n'
-        '- "what\'s [URL] about" → {"command": "/read [extracted ID]", "reason": "User wants info"}\n'
-        'DO NOT refuse searches or lecture. Execute immediately and suggest follow-ups.'
-    )
+    # Add user message
+    instruction += f"\n\nUser: {user}"
     
-    instruction = base_instruction + context
+    # Track chosen action for telemetry
+    chosen_action = None
+    is_valid = False
+    output = None
     
     try:
         client = _client()
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.1,
-            messages=[
-                {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": instruction + "\n\nUser: " + user},
-            ],
-        )
-        txt = (resp.choices[0].message.content or "").strip()
+        
+        # First attempt with structured outputs
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0.1,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": instruction},
+                ],
+                response_format={"type": "json_object"},
+            )
+            txt = (resp.choices[0].message.content or "").strip()
+        except Exception as e:
+            logger.warning(f"Structured output failed, trying without: {e}")
+            # Fallback to regular completion
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0.1,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": instruction},
+                ],
+            )
+            txt = (resp.choices[0].message.content or "").strip()
+        
+        # Clean up markdown code blocks if present
         if txt.startswith("```"):
             txt = txt.strip("`")
             if txt.lower().startswith("json"):
                 txt = txt[4:].lstrip()
+        
+        # Parse JSON
         try:
             data = json.loads(txt)
             if not isinstance(data, dict):
-                return None
-            if "command" in data:
-                cmd = data["command"]
-                # Check if it's a valid command (with or without arguments)
-                valid_commands = {
-                    "/search",
-                    "/suggest-searches",
-                    "/save-image",
-                    "/fetch-image",
-                    "/generate-queries",
-                    "/make-brief",
-                    "/harvest-stub",
-                    "/report",
-                    "/read",
-                    "/summarize",
-                    "/add-to-report",
-                    "/report-view",
-                    "/report-pdf",
-                    "/help",
-                }
-                # Check if command starts with any valid command
-                if any(cmd.startswith(valid) for valid in valid_commands):
+                # Retry once with reminder
+                logger.warning("Router returned non-dict, retrying with JSON reminder")
+                retry_instruction = instruction + "\n\nCRITICAL: Return ONLY a JSON object with 'command' and 'reason' OR 'say' and 'reason'. No prose, no markdown."
+                resp = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    temperature=0.1,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": retry_instruction},
+                    ],
+                    response_format={"type": "json_object"},
+                )
+                txt = (resp.choices[0].message.content or "").strip()
+                if txt.startswith("```"):
+                    txt = txt.strip("`")
+                    if txt.lower().startswith("json"):
+                        txt = txt[4:].lstrip()
+                data = json.loads(txt)
+            
+            # Validate schema
+            is_valid = _validate_router_output(data)
+            output = data
+            
+            if is_valid:
+                if "command" in data:
+                    chosen_action = "command"
+                    cmd = data["command"]
                     return {"command": cmd, "reason": data.get("reason", "")}
-            if "say" in data:
-                return {"say": str(data["say"])[:600], "reason": data.get("reason", "")}
-        except json.JSONDecodeError:
-            # If JSON parsing fails, try to extract a simple response
-            # or return a helpful error message
-            if txt:
-                # If we got some text but not JSON, return it as a "say" response
-                return {
-                    "say": f"I understand: {txt[:200]}",
-                    "reason": "JSON parse failed, using text response",
-                }
-            return None
+                elif "say" in data:
+                    chosen_action = "say"
+                    return {"say": str(data["say"])[:600], "reason": data.get("reason", "")}
+            else:
+                logger.warning(f"Invalid router response schema: {data}")
+                # Try to extract valid parts
+                if "command" in data or "say" in data:
+                    chosen_action = "command" if "command" in data else "say"
+                    return {
+                        ("command" if "command" in data else "say"): data.get("command") or data.get("say", ""),
+                        "reason": data.get("reason", "Response validation failed"),
+                    }
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON decode error: {e}, text: {txt[:200]}")
+            # Retry once with JSON-only reminder
+            try:
+                retry_instruction = instruction + "\n\nCRITICAL: Return ONLY valid JSON. No prose, no markdown, no explanations. Just JSON."
+                resp = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    temperature=0.1,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": retry_instruction},
+                    ],
+                    response_format={"type": "json_object"},
+                )
+                txt = (resp.choices[0].message.content or "").strip()
+                if txt.startswith("```"):
+                    txt = txt.strip("`")
+                    if txt.lower().startswith("json"):
+                        txt = txt[4:].lstrip()
+                data = json.loads(txt)
+                is_valid = _validate_router_output(data)
+                output = data
+                if is_valid:
+                    if "command" in data:
+                        chosen_action = "command"
+                        return {"command": data["command"], "reason": data.get("reason", "")}
+                    elif "say" in data:
+                        chosen_action = "say"
+                        return {"say": str(data["say"])[:600], "reason": data.get("reason", "")}
+            except Exception as retry_err:
+                logger.error(f"Retry also failed: {retry_err}")
+                # Last resort: return a say response
+                if txt:
+                    chosen_action = "say"
+                    return {
+                        "say": f"I understand: {txt[:200]}",
+                        "reason": "JSON parse failed after retry, using text response",
+                    }
     except Exception as e:
         # Handle API errors gracefully - return None to fall back to slash commands
         logger.warning(f"OpenAI API error: {e}")
-        return None
+    finally:
+        # Log telemetry
+        try:
+            log_router(PROMPT_VERSION, user, output, is_valid, chosen_action)
+        except Exception as tel_err:
+            logger.debug(f"Telemetry logging failed: {tel_err}")
+    
     return None
 
 

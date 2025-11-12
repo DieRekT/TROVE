@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Timeline - Troveing{% endblock %}
+{% block content %}
+<div class="timeline-layout">
+  <header class="timeline-header">
+    <h1>⏳ Timeline</h1>
+    <div class="header-actions">
+      <button class="btn-secondary" onclick="exportTimeline()">📥 Export Chronology</button>
+      <button class="btn-primary" onclick="addEvent()">+ Add Event</button>
+    </div>
+  </header>
+
+  <main class="timeline-main">
+    <div class="timeline-controls">
+      <label>
+        <input type="range" id="zoomSlider" min="1" max="10" value="5" oninput="updateZoom(this.value)">
+        <span>Zoom: <span id="zoomValue">5x</span></span>
+      </label>
+      <label>
+        <input type="number" id="yearFrom" placeholder="From" min="1800" max="2024" onchange="updateRange()">
+        <span>–</span>
+        <input type="number" id="yearTo" placeholder="To" min="1800" max="2024" onchange="updateRange()">
+      </label>
+    </div>
+
+    <div class="timeline-container" id="timelineContainer">
+      <div class="timeline-ribbon" id="timelineRibbon">
+        <!-- Events will be rendered here -->
+        <div class="timeline-event" data-year="1851" style="left: 10%">
+          <div class="event-marker"></div>
+          <div class="event-label">Gold Rush Begins</div>
+          <div class="event-popup">
+            <h4>1851 - Gold Rush Begins</h4>
+            <p>Discovery of gold in Victoria and New South Wales.</p>
+            <a href="/search?q=gold+rush+1851">View Sources</a>
+          </div>
+        </div>
+        
+        <div class="timeline-event" data-year="1901" style="left: 50%">
+          <div class="event-marker"></div>
+          <div class="event-label">Federation</div>
+          <div class="event-popup">
+            <h4>1901 - Federation</h4>
+            <p>Australia becomes a federation.</p>
+            <a href="/search?q=federation+1901">View Sources</a>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Year markers -->
+      <div class="timeline-years" id="timelineYears">
+        <!-- Years will be rendered here -->
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+let events = [];
+let zoomLevel = 5;
+let yearFrom = 1800;
+let yearTo = 2024;
+
+// Load timeline events
+async function loadTimeline() {
+  try {
+    const response = await fetch('/api/timeline');
+    const data = await response.json();
+    if (data.ok && data.events) {
+      events = data.events;
+    } else {
+      // Load from localStorage as fallback
+      const stored = localStorage.getItem('timelineEvents');
+      if (stored) {
+        events = JSON.parse(stored);
+      }
+    }
+    renderTimeline();
+  } catch (error) {
+    console.error('Error loading timeline:', error);
+    renderTimeline();
+  }
+}
+
+function renderTimeline() {
+  const ribbon = document.getElementById('timelineRibbon');
+  const years = document.getElementById('timelineYears');
+  
+  // Render events
+  ribbon.innerHTML = events.map((event, i) => {
+    const percent = ((event.year - yearFrom) / (yearTo - yearFrom)) * 100;
+    return `
+      <div class="timeline-event" data-year="${event.year}" style="left: ${percent}%" onclick="showEventDetails(${i})">
+        <div class="event-marker"></div>
+        <div class="event-label">${event.title}</div>
+        <div class="event-popup">
+          <h4>${event.year} - ${event.title}</h4>
+          <p>${event.description || ''}</p>
+          ${event.sources ? `<a href="${event.sources}">View Sources</a>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // Render year markers
+  const yearRange = yearTo - yearFrom;
+  const step = Math.max(1, Math.floor(yearRange / 20));
+  years.innerHTML = '';
+  for (let year = yearFrom; year <= yearTo; year += step) {
+    const percent = ((year - yearFrom) / yearRange) * 100;
+    const marker = document.createElement('div');
+    marker.className = 'year-marker';
+    marker.style.left = `${percent}%`;
+    marker.textContent = year;
+    marker.title = year;
+    years.appendChild(marker);
+  }
+}
+
+function updateZoom(value) {
+  zoomLevel = parseInt(value);
+  document.getElementById('zoomValue').textContent = value + 'x';
+  document.getElementById('timelineContainer').style.transform = `scale(${zoomLevel / 5})`;
+}
+
+function updateRange() {
+  yearFrom = parseInt(document.getElementById('yearFrom').value) || 1800;
+  yearTo = parseInt(document.getElementById('yearTo').value) || 2024;
+  renderTimeline();
+}
+
+function showEventDetails(index) {
+  const event = events[index];
+  if (event && confirm(`Edit event: ${event.title}?`)) {
+    editEvent(index);
+  }
+}
+
+function addEvent() {
+  const year = prompt('Year:');
+  const title = prompt('Event title:');
+  const description = prompt('Description (optional):');
+  
+  if (year && title) {
+    events.push({
+      year: parseInt(year),
+      title,
+      description: description || ''
+    });
+    events.sort((a, b) => a.year - b.year);
+    localStorage.setItem('timelineEvents', JSON.stringify(events));
+    renderTimeline();
+  }
+}
+
+function editEvent(index) {
+  const event = events[index];
+  const year = prompt('Year:', event.year);
+  const title = prompt('Event title:', event.title);
+  const description = prompt('Description:', event.description || '');
+  
+  if (year && title) {
+    events[index] = {year: parseInt(year), title, description: description || ''};
+    events.sort((a, b) => a.year - b.year);
+    localStorage.setItem('timelineEvents', JSON.stringify(events));
+    renderTimeline();
+  }
+}
+
+function exportTimeline() {
+  const csv = events.map(e => `${e.year},"${e.title}","${e.description || ''}"`).join('\n');
+  const blob = new Blob([`Year,Title,Description\n${csv}`], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'timeline.csv';
+  a.click();
+}
+
+// Initialize
+loadTimeline();
+updateRange();
+</script>
+{% endblock %}
+

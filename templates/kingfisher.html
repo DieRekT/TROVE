@@ -1,0 +1,1332 @@
+{% extends "base.html" %}
+{% block title %}Kingfisher - Lesson Cards{% endblock %}
+{% block page_title %}Kingfisher Workspace{% endblock %}
+{% block content %}
+<style>
+.kingfisher-layout {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.kingfisher-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kingfisher-header h1 {
+  margin: 0;
+  font-size: 2rem;
+  color: var(--text-primary);
+}
+
+.header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.btn-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-tab.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-tertiary);
+}
+
+.filter-select {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.lesson-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.lesson-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-color: var(--primary);
+}
+
+.lesson-card.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.card-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  flex: 1;
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-size: 1.2rem;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.btn-icon:hover {
+  opacity: 1;
+}
+
+.card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.card-front, .card-back {
+  min-height: 120px;
+  padding: 1rem;
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.card-back {
+  display: none;
+}
+
+.lesson-card.flipped .card-front {
+  display: none;
+}
+
+.lesson-card.flipped .card-back {
+  display: block;
+}
+
+.card-text {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.card-category {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: var(--primary);
+  color: white;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.tag {
+  padding: 0.25rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--text-secondary);
+}
+
+.empty-state__icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h2 {
+  margin: 1rem 0;
+  color: var(--text-primary);
+}
+
+/* Modal */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal.active {
+  display: flex;
+}
+
+.modal-content {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  line-height: 1;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.form-group textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 2rem;
+}
+
+.brief-builder {
+  display: none;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.brief-builder.active {
+  display: flex;
+}
+
+.brief-controls {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.control-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.brief-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 260px;
+}
+
+.brief-picker select {
+  width: 100%;
+}
+
+.combobox-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.combobox-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.combobox-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.combobox-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.combobox-loading,
+.combobox-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.combobox-options {
+  padding: 0.25rem;
+}
+
+.combobox-option {
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.combobox-option:hover,
+.combobox-option[aria-selected="true"] {
+  background: var(--bg-tertiary);
+}
+
+.combobox-option-title {
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.combobox-option-meta {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.combobox-option-snippet {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.combobox-option-badges {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.combobox-option-badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.combobox-option-badge[data-status="cached"] {
+  background: rgba(34, 197, 94, 0.15);
+  color: rgb(22, 163, 74);
+}
+
+.brief-picker-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.brief-picker-toggle:hover {
+  color: var(--primary-dark);
+}
+
+.brief-article-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.brief-article-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  background: var(--bg-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.brief-article-item:hover {
+  border-color: var(--primary);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.1);
+}
+
+.brief-article-item h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.brief-article-meta {
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.brief-article-snippet {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.brief-article-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.brief-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.brief-status-badge[data-status="cached"] {
+  background: rgba(16, 185, 129, 0.18);
+  color: #047857;
+}
+
+.brief-status-badge[data-status="missing"] {
+  background: rgba(239, 68, 68, 0.18);
+  color: #b91c1c;
+}
+
+.control-column label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.brief-input {
+  min-width: 260px;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.brief-controls .control-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.brief-status {
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.brief-body {
+  display: none;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.brief-body.active {
+  display: flex;
+}
+
+.brief-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+@media (min-width: 1100px) {
+  .brief-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  }
+}
+
+.brief-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.brief-card h2,
+.brief-card h3 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.summary-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.summary-overview {
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.summary-badge[data-tone="info"] {
+  background: rgba(79, 70, 229, 0.12);
+  color: var(--primary);
+  border-color: rgba(79, 70, 229, 0.24);
+}
+
+.summary-badge[data-tone="success"] {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.summary-badge[data-tone="warning"] {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.summary-badge[data-tone="muted"] {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.brief-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.metric-pill {
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.12);
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.brief-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.summary-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.summary-section h4 {
+  margin: 0 0 0.5rem;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.summary-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.summary-list.summary-list--quotes {
+  padding-left: 0;
+}
+
+.summary-list.summary-list--quotes li {
+  list-style: none;
+  border-left: 3px solid var(--primary);
+  background: rgba(79, 70, 229, 0.08);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-style: italic;
+}
+
+.summary-list.summary-list--steps {
+  list-style: decimal inside;
+}
+
+.brief-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  background: var(--bg-primary);
+}
+
+.brief-section h4 {
+  margin: 0 0 0.75rem;
+  color: var(--text-primary);
+}
+
+.brief-section ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.brief-images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.brief-image-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+.brief-image-card img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.brief-image-card .image-meta {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.brief-markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.brief-markdown textarea {
+  width: 100%;
+  min-height: 220px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 1rem;
+  font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+  resize: vertical;
+}
+
+/* Print Styles */
+@media print {
+  .kingfisher-header,
+  .header-actions,
+  .card-actions,
+  .btn-primary,
+  .modal {
+    display: none !important;
+  }
+  
+  .kingfisher-layout {
+    padding: 0;
+    max-width: 100%;
+  }
+  
+.cards-grid {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  page-break-inside: avoid;
+}
+  
+  .lesson-card {
+    page-break-inside: avoid;
+    border: 2px solid #000;
+    padding: 1rem;
+    min-height: initial;
+  }
+  
+  .lesson-card.flipped {
+    transform: none;
+  }
+  
+  .card-front,
+  .card-back {
+    display: block !important;
+    border-top: 1px solid #ccc;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+  }
+  
+  .card-back::before {
+    content: "Back: ";
+    font-weight: bold;
+  }
+  
+  .card-front::before {
+    content: "Front: ";
+    font-weight: bold;
+  }
+}
+</style>
+
+<div class="kingfisher-layout">
+  <header class="kingfisher-header">
+    <h1>🦜 Kingfisher Workspace</h1>
+    <div class="header-actions">
+      <div class="view-toggle">
+        <button class="btn-tab active" data-view-btn data-view="cards">Lesson Cards</button>
+        <button class="btn-tab" data-view-btn data-view="brief">Brief Builder</button>
+      </div>
+      <button class="btn-primary" onclick="openCreateModal()">+ New Card</button>
+      <button class="btn-primary" onclick="window.print()">🖨️ Print Cards</button>
+      <select id="categoryFilter" class="filter-select" aria-label="Filter cards by category" onchange="filterCards()">
+        <option value="">All Categories</option>
+        {% for cat in categories %}
+        <option value="{{ cat }}">{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </header>
+
+  <main class="cards-grid" id="cardsGrid" data-panel="cards">
+    {% if cards %}
+      {% for card in cards %}
+      <div class="lesson-card" data-id="{{ card.id }}" data-category="{{ card.category or '' }}" onclick="flipCard(this)">
+        <div class="card-header">
+          <h3 class="card-title">{{ card.title }}</h3>
+          <div class="card-actions" onclick="event.stopPropagation()">
+            <button class="btn-icon" onclick="editCard('{{ card.id }}')" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="deleteCard('{{ card.id }}')" title="Delete">🗑️</button>
+          </div>
+        </div>
+        <div class="card-content">
+          <div class="card-front">
+            <div class="card-text">{{ card.front_text or 'Click to flip' }}</div>
+          </div>
+          <div class="card-back">
+            <div class="card-text">{{ card.back_text or 'No back text' }}</div>
+          </div>
+        </div>
+        {% if card.category %}
+        <span class="card-category">{{ card.category }}</span>
+        {% endif %}
+        {% if card.tags %}
+        <div class="card-tags">
+          {% for tag in card.tags %}
+          <span class="tag">{{ tag }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <div class="empty-state__icon">🦜</div>
+        <h2>No Lesson Cards Yet</h2>
+        <p>Create your first lesson card to get started!</p>
+        <button class="btn-primary" onclick="openCreateModal()">Create Card</button>
+      </div>
+    {% endif %}
+  </main>
+
+  <section class="brief-builder" data-panel="brief">
+    <div class="brief-controls">
+      <div class="control-row">
+        <div class="brief-picker" data-brief-picker-container>
+          <label for="briefArticleCombobox">Pick a recent Trove article</label>
+          <div class="combobox-wrapper">
+            <input 
+              type="text" 
+              id="briefArticleCombobox" 
+              class="brief-input combobox-input" 
+              placeholder="Search articles by title, date, or source..."
+              autocomplete="off"
+              role="combobox"
+              aria-expanded="false"
+              aria-controls="briefArticleListbox"
+              aria-autocomplete="list"
+            />
+            <div class="combobox-dropdown" id="briefArticleListbox" role="listbox" aria-label="Recent articles" hidden>
+              <div class="combobox-loading" hidden>Loading articles...</div>
+              <div class="combobox-empty" hidden>No articles found. Try a different search.</div>
+              <div class="combobox-options" role="group"></div>
+            </div>
+          </div>
+          <!-- Hidden select for backward compatibility -->
+          <select id="briefArticleSelect" class="brief-input" style="display:none;" aria-hidden="true">
+            <option value="">— Select an article —</option>
+          </select>
+        </div>
+        <div class="control-column" data-brief-manual-container hidden>
+          <label for="briefArticleInput">Trove Article ID</label>
+          <input list="briefArticleSuggestions" id="briefArticleInput" class="brief-input" placeholder="e.g. nla.news-article12345678" autocomplete="off">
+          <datalist id="briefArticleSuggestions"></datalist>
+        </div>
+        <div class="control-buttons">
+          <button class="btn-primary" id="loadBriefButton">Load Brief</button>
+          <button class="btn-secondary" id="extractCardsButton" disabled>🃏 Extract Cards</button>
+          <button class="btn-secondary" id="refreshBriefButton" disabled>Refresh Summary</button>
+          <button class="btn-secondary" id="refreshImagesButton" disabled>Refresh Images</button>
+          <button class="btn-secondary" id="copyMarkdownButton" disabled>Copy Markdown</button>
+        </div>
+      </div>
+      <button type="button" class="brief-picker-toggle" id="briefManualToggle">✏️ Enter ID manually</button>
+      <p class="hint">
+        Paste a Trove article ID (for example <code>nla.news-article174411450</code>) to build a research brief from Kingfisher cards and summaries.
+      </p>
+      <div class="brief-article-list" data-brief-article-list>
+        <p class="hint">Recent articles you've viewed will appear here once tracked.</p>
+      </div>
+    </div>
+
+    <div class="brief-status" data-brief-status hidden>Enter an article ID to generate a brief.</div>
+
+    <div class="brief-body" data-brief-body>
+      <div class="brief-grid">
+        <section class="brief-card">
+          <header>
+            <h2 data-brief-title>Article brief</h2>
+            <p class="summary-title" data-brief-summary-title hidden></p>
+            <p class="hint" data-brief-subtitle></p>
+          </header>
+          <div class="summary-meta" data-brief-flags hidden></div>
+          <div class="summary-overview" data-brief-overview>Overview will appear here once the brief loads.</div>
+          <div class="brief-metrics" data-brief-metrics></div>
+          <div class="summary-sections">
+            <section class="summary-section" data-brief-highlights-section hidden>
+              <h4>Highlights</h4>
+              <ul class="summary-list" data-brief-highlights></ul>
+            </section>
+            <section class="summary-section" data-brief-quotes-section hidden>
+              <h4>Notable Quotes</h4>
+              <ul class="summary-list summary-list--quotes" data-brief-quotes></ul>
+            </section>
+            <section class="summary-section" data-brief-steps-section hidden>
+              <h4>Suggested Next Steps</h4>
+              <ul class="summary-list summary-list--steps" data-brief-steps></ul>
+            </section>
+          </div>
+        </section>
+
+        <section class="brief-card">
+          <header>
+            <h3>Visual References</h3>
+          </header>
+          <div class="brief-images-grid" data-brief-images></div>
+          <p class="hint" data-brief-images-hint>No images yet. Try refreshing with image generation enabled.</p>
+        </section>
+      </div>
+
+      <section class="brief-card">
+        <header>
+          <h3>Knowledge Cards</h3>
+        </header>
+        <div class="brief-sections" data-brief-sections></div>
+      </section>
+
+      <section class="brief-card brief-markdown">
+        <header>
+          <h3>Markdown Preview</h3>
+          <p class="hint">Use this snippet in reports, notebooks, or downstream exports.</p>
+        </header>
+        <textarea readonly data-brief-markdown placeholder="Markdown will be generated once a brief is loaded."></textarea>
+      </section>
+    </div>
+  </section>
+</div>
+
+<!-- Create/Edit Modal -->
+<div class="modal" id="cardModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modalTitle">Create Lesson Card</h2>
+      <button class="btn-close" onclick="closeModal()">×</button>
+    </div>
+    <form id="cardForm" onsubmit="saveCard(event)">
+      <div class="form-group">
+        <label for="cardTitle">Title *</label>
+        <input type="text" id="cardTitle" name="title" required placeholder="Card title">
+      </div>
+      <div class="form-group">
+        <label for="cardCategory">Category</label>
+        <input type="text" id="cardCategory" name="category" placeholder="e.g. History, Science, Math">
+      </div>
+      <div class="form-group">
+        <label for="cardFront">Front Text</label>
+        <textarea id="cardFront" name="front" placeholder="Question or prompt (front of card)"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="cardBack">Back Text</label>
+        <textarea id="cardBack" name="back" placeholder="Answer or explanation (back of card)"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="cardTags">Tags (comma-separated)</label>
+        <input type="text" id="cardTags" name="tags" placeholder="tag1, tag2, tag3">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Save Card</button>
+      </div>
+      <input type="hidden" id="cardId">
+    </form>
+  </div>
+</div>
+
+<script id="kingfisherCardsData" type="application/json">{{ cards | tojson | safe }}</script>
+<script>
+let cards = [];
+const cardsDataEl = document.getElementById('kingfisherCardsData');
+if (cardsDataEl) {
+  try {
+    const parsed = JSON.parse(cardsDataEl.textContent || '[]');
+    cards = Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.warn('Failed to parse lesson cards payload', err);
+    cards = [];
+  }
+}
+
+const cardsGridEl = document.getElementById('cardsGrid');
+const categoryFilterEl = document.getElementById('categoryFilter');
+
+function escapeHtml(text = '') {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function normalizeCard(rawCard = {}) {
+  return {
+    ...rawCard,
+    tags: Array.isArray(rawCard.tags)
+      ? rawCard.tags
+      : typeof rawCard.tags === 'string'
+        ? rawCard.tags.split(',').map((t) => t.trim()).filter(Boolean)
+        : [],
+  };
+}
+
+function renderCardsGrid(data = cards) {
+  if (!cardsGridEl) return;
+
+  const normalized = data.map(normalizeCard);
+
+  if (!normalized.length) {
+    cardsGridEl.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state__icon">🦜</div>
+        <h2>No Lesson Cards Yet</h2>
+        <p>Create your first lesson card to get started!</p>
+        <button class="btn-primary" onclick="openCreateModal()">Create Card</button>
+      </div>
+    `;
+    return;
+  }
+
+  const html = normalized.map((card) => `
+    <div class="lesson-card" data-id="${escapeHtml(card.id || '')}" data-category="${escapeHtml(card.category || '')}" onclick="flipCard(this)">
+      <div class="card-header">
+        <h3 class="card-title">${escapeHtml(card.title || 'Untitled Card')}</h3>
+        <div class="card-actions" onclick="event.stopPropagation()">
+          <button class="btn-icon" onclick="editCard('${escapeHtml(card.id || '')}')" title="Edit">✏️</button>
+          <button class="btn-icon" onclick="deleteCard('${escapeHtml(card.id || '')}')" title="Delete">🗑️</button>
+        </div>
+      </div>
+      <div class="card-content">
+        <div class="card-front">
+          <div class="card-text">${escapeHtml(card.front_text || 'Click to flip')}</div>
+        </div>
+        <div class="card-back">
+          <div class="card-text">${escapeHtml(card.back_text || 'No back text')}</div>
+        </div>
+      </div>
+      ${card.category ? `<span class="card-category">${escapeHtml(card.category)}</span>` : ''}
+      ${card.tags?.length ? `
+        <div class="card-tags">
+          ${card.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+
+  cardsGridEl.innerHTML = html;
+  filterCards(); // Re-apply current filter
+}
+
+async function loadCardsFromServer({ showToast = false } = {}) {
+  try {
+    const response = await fetch('/api/lesson-cards');
+    const payload = await response.json();
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || response.statusText || 'Failed to load cards');
+    }
+    cards = Array.isArray(payload.cards) ? payload.cards : [];
+    renderCardsGrid(cards);
+    if (showToast) {
+      window.showToast?.('Lesson card saved', 'success');
+    }
+  } catch (error) {
+    console.error('Failed to refresh cards:', error);
+    window.showToast?.(error.message || 'Unable to refresh cards', 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderCardsGrid(cards);
+  if (categoryFilterEl) {
+    categoryFilterEl.addEventListener('change', filterCards);
+  }
+});
+
+function flipCard(cardElement) {
+  cardElement.classList.toggle('flipped');
+}
+
+function openCreateModal() {
+  document.getElementById('modalTitle').textContent = 'Create Lesson Card';
+  document.getElementById('cardForm').reset();
+  document.getElementById('cardId').value = '';
+  document.getElementById('cardModal').classList.add('active');
+}
+
+function editCard(cardId) {
+  const card = cards.find(c => c.id === cardId);
+  if (!card) return;
+  
+  document.getElementById('modalTitle').textContent = 'Edit Lesson Card';
+  document.getElementById('cardId').value = card.id;
+  document.getElementById('cardTitle').value = card.title || '';
+  document.getElementById('cardCategory').value = card.category || '';
+  document.getElementById('cardFront').value = card.front_text || '';
+  document.getElementById('cardBack').value = card.back_text || '';
+  document.getElementById('cardTags').value = (card.tags || []).join(', ');
+  document.getElementById('cardModal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('cardModal').classList.remove('active');
+}
+
+async function saveCard(event) {
+  event.preventDefault();
+
+  const cardId = document.getElementById('cardId').value;
+  const title = document.getElementById('cardTitle').value;
+  const category = document.getElementById('cardCategory').value;
+  const frontText = document.getElementById('cardFront').value;
+  const backText = document.getElementById('cardBack').value;
+  const tagsStr = document.getElementById('cardTags').value;
+  const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+
+  const submitBtn = event.submitter || document.querySelector('#cardForm button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.dataset.originalText = submitBtn.textContent;
+    submitBtn.textContent = 'Saving…';
+  }
+
+  const url = cardId ? `/api/lesson-cards/${cardId}` : '/api/lesson-cards';
+  const method = cardId ? 'PUT' : 'POST';
+
+  try {
+    const response = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title,
+        category,
+        front_text: frontText,
+        back_text: backText,
+        tags
+      })
+    });
+
+    const data = await response.json();
+    if (data.ok) {
+      closeModal();
+      await loadCardsFromServer({ showToast: true });
+    } else {
+      const message = data.error || 'Unknown error';
+      window.showToast?.(message, 'error') ?? alert('Error saving card: ' + message);
+    }
+  } catch (error) {
+    window.showToast?.(error.message, 'error') ?? alert('Error saving card: ' + error.message);
+  }
+  finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = submitBtn.dataset.originalText || 'Save Card';
+    }
+  }
+}
+
+async function deleteCard(cardId) {
+  if (!confirm('Are you sure you want to delete this card?')) return;
+
+  try {
+    const response = await fetch(`/api/lesson-cards/${cardId}`, {
+      method: 'DELETE'
+    });
+
+    const data = await response.json();
+    if (data.ok) {
+      await loadCardsFromServer({ showToast: true });
+      window.showToast?.('Lesson card deleted', 'info');
+    } else {
+      const message = data.error || 'Unknown error';
+      window.showToast?.(message, 'error') ?? alert('Error deleting card: ' + message);
+    }
+  } catch (error) {
+    window.showToast?.(error.message, 'error') ?? alert('Error deleting card: ' + error.message);
+  }
+}
+
+function filterCards() {
+  const filter = categoryFilterEl ? categoryFilterEl.value : '';
+  const cardElements = document.querySelectorAll('.lesson-card');
+
+  cardElements.forEach(card => {
+    const category = card.getAttribute('data-category') || '';
+    if (!filter || category === filter) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+
+// Close modal on outside click
+document.getElementById('cardModal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    closeModal();
+  }
+});
+</script>
+<script src="{{ static_url(request, 'static/js/kingfisher_brief.js') }}"></script>
+{% endblock %}
+
