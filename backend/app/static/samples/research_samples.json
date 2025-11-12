@@ -2,25 +2,24 @@
   "samples": [
     {
       "label": "Iluka mineral sands (1945–1980, NSW)",
-      "query": "Iluka mineral sands Clarence River NSW",
+      "query": "Iluka mineral sands Clarence River NSW Yamba Iluka beach sand rutile zircon ilmenite mining lease dredge",
       "years_from": 1945,
       "years_to": 1980,
       "depth": "deep"
     },
     {
       "label": "Ashby ferry incidents (1900–1925, Harwood/Maclean)",
-      "query": "Ashby ferry Harwood Shire Council accident",
+      "query": "Ashby ferry Harwood Shire Council accident cable punt breakdown Maclean",
       "years_from": 1900,
       "years_to": 1925,
       "depth": "standard"
     },
     {
       "label": "East Clarence gold mining (1890–1935)",
-      "query": "East Clarence gold mine Bendigo anticline Paddy's Gully",
+      "query": "East Clarence gold mine Bendigo anticline Paddy's Gully reef",
       "years_from": 1890,
       "years_to": 1935,
       "depth": "standard"
     }
   ]
 }
-

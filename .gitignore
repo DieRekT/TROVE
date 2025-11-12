@@ -53,3 +53,65 @@ yarn-error.log*
 
 # EAS
 .eas/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+app/data/*.db
+data/*.db
+backend/*.sqlite
+
+# Tunnel URLs and temporary files
+PUBLIC_TUNNEL_URL.txt
+*.txt.bak
+
+# Research outputs and telemetry
+outputs/research_telemetry.jsonl
+outputs/research/*.jsonl
+research-*.md
+
+# Temporary files
+*.bin
+thumb.bin
+article_image.bin
+*.zip
+trove-documentation.zip
+trove-repo.zip
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# OS files
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+venv.bak/
+venv_backup/
+
+# Node modules (already covered but being explicit)
+node_modules/
+.npm
+.pnpm-store

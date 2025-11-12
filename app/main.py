@@ -806,6 +806,14 @@ async def research_page(request: Request, seed: Optional[str] = Query(None)):
         seed_query=seed or "",
     )
 
+
+@app.get("/deep", response_class=HTMLResponse)
+async def deep_research_alias(request: Request, seed: Optional[str] = Query(None)):
+    """Alias for /research - Deep Research page."""
+    from fastapi.responses import RedirectResponse
+    query_string = f"?seed={quote_plus(seed)}" if seed else ""
+    return RedirectResponse(url=f"/research{query_string}", status_code=302)
+
 @app.get("/trove/", response_class=HTMLResponse)
 async def trove_root_slash(request: Request):
     """Handle /trove/ path - redirect to search."""
@@ -2348,12 +2356,26 @@ async def desk(request: Request):
     return HTMLResponse(content=template.render(**context))
 
 
+@app.get("/research-desk", response_class=HTMLResponse)
+async def research_desk_alias(request: Request):
+    """Alias for /desk - Research Desk page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/desk", status_code=302)
+
+
 @app.get("/collections", response_class=HTMLResponse)
 async def collections(request: Request):
     """Collections - Board view."""
     context = {"request": request}
     template = templates_env.get_template("collections.html")
     return HTMLResponse(content=template.render(**context))
+
+
+@app.get("/notebook", response_class=HTMLResponse)
+async def notebook_alias(request: Request):
+    """Alias for /collections - Collections/Notebook page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/collections", status_code=302)
 
 
 @app.get("/studio", response_class=HTMLResponse)

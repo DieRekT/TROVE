@@ -288,6 +288,385 @@ Available commands:
                 logger.exception(f"Command error: {e}")
                 return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
         else:
+            # Non-slash command - check for timeline/entity queries first
+            msg_lower = msg.lower()
+            
+            # Timeline-aware query detection (before LLM routing)
+            try:
+                # 1. Compare queries: "compare X vs Y" or "compare X and Y"
+                if ("compare" in msg_lower and (" vs " in msg_lower or " and " in msg_lower or " with " in msg_lower)):
+                    # Extract terms
+                    compare_text = msg_lower.replace("compare", "").strip()
+                    if " vs " in compare_text:
+                        parts = compare_text.split(" vs ")
+                    elif " and " in compare_text:
+                        parts = compare_text.split(" and ")
+                    elif " with " in compare_text:
+                        parts = compare_text.split(" with ")
+                    else:
+                        parts = [compare_text]
+                    
+                    terms = [p.strip() for p in parts if p.strip() and len(p.strip()) > 2]
+                    if len(terms) >= 2:
+                        from app.routers.timeline import compare_timeline
+                        # Create a minimal request object for timeline endpoint
+                        from starlette.requests import Request as StarletteRequest
+                        from starlette.datastructures import Headers
+                        dummy_scope = {
+                            "type": "http",
+                            "method": "GET",
+                            "path": "/api/timeline/compare",
+                            "headers": Headers(request.headers).raw,
+                            "client": (request.client.host if request.client else "unknown", 0),
+                        }
+                        dummy_request = StarletteRequest(dummy_scope)
+                        dummy_request._state = request.scope.get("state", {})
+                        # Copy client info
+                        if request.client:
+                            dummy_request.client = request.client
+                        
+                        timeline_data = await compare_timeline(dummy_request, q=",".join(terms[:5]))  # Limit to 5 terms
+                        timeline_json = timeline_data.body if hasattr(timeline_data, 'body') else None
+                        if timeline_json:
+                            import json
+                            timeline_dict = json.loads(timeline_json.decode()) if isinstance(timeline_json, bytes) else timeline_json
+                        else:
+                            # Fallback: try to get from response
+                            timeline_dict = {"ok": True, "terms": terms, "years": [], "datasets": []}
+                        
+                        if timeline_dict.get("ok") and timeline_dict.get("datasets"):
+                            reply = f"📊 Comparing {len(terms)} entities: {', '.join(terms[:3])}"
+                            if len(terms) > 3:
+                                reply += f" and {len(terms) - 3} more"
+                            return JSONResponse({
+                                "ok": True,
+                                "reply": reply,
+                                "timeline": timeline_dict
+                            })
+                        else:
+                            return _ok(f"Could not find timeline data for comparison of: {', '.join(terms)}")
+                
+                # 2. "When was X mentioned most?" queries
+                if ("when was" in msg_lower or "when did" in msg_lower) and ("mentioned" in msg_lower or "appear" in msg_lower):
+                    # Extract entity name
+                    if "when was" in msg_lower:
+                        term_text = msg_lower.split("when was")[1].split("mentioned")[0].split("appear")[0].strip()
+                    elif "when did" in msg_lower:
+                        term_text = msg_lower.split("when did")[1].split("mentioned")[0].split("appear")[0].strip()
+                    else:
+                        term_text = ""
+                    
+                    # Clean up term (remove common words)
+                    term_text = term_text.replace("the", "").replace("a", "").replace("an", "").strip()
+                    
+                    if term_text and len(term_text) > 2:
+                        from app.routers.timeline import timeline
+                        from starlette.requests import Request as StarletteRequest
+                        from starlette.datastructures import Headers
+                        dummy_scope = {
+                            "type": "http",
+                            "method": "GET",
+                            "path": "/api/timeline",
+                            "headers": Headers(request.headers).raw,
+                            "client": (request.client.host if request.client else "unknown", 0),
+                        }
+                        dummy_request = StarletteRequest(dummy_scope)
+                        dummy_request._state = request.scope.get("state", {})
+                        if request.client:
+                            dummy_request.client = request.client
+                        
+                        timeline_data = await timeline(dummy_request, q=term_text)
+                        timeline_json = timeline_data.body if hasattr(timeline_data, 'body') else None
+                        if timeline_json:
+                            import json
+                            timeline_dict = json.loads(timeline_json.decode()) if isinstance(timeline_json, bytes) else timeline_json
+                        else:
+                            timeline_dict = {"ok": True, "term": term_text, "timeline": []}
+                        
+                        if timeline_dict.get("ok") and timeline_dict.get("timeline"):
+                            timeline_list = timeline_dict.get("timeline", [])
+                            if timeline_list:
+                                best = max(timeline_list, key=lambda x: x.get("count", 0))
+                                total = sum(p.get("count", 0) for p in timeline_list)
+                                reply = f'📅 "{term_text}" was most mentioned in **{best.get("year")}** with **{best.get("count")}** article{"s" if best.get("count") != 1 else ""}.\n\nTotal mentions: {total} across {len(timeline_list)} year{"s" if len(timeline_list) != 1 else ""}.'
+                                return JSONResponse({
+                                    "ok": True,
+                                    "reply": reply,
+                                    "timeline": timeline_dict
+                                })
+                            else:
+                                return _ok(f'No timeline data found for "{term_text}". Try tracking some articles first.')
+                        else:
+                            return _ok(f'No timeline data found for "{term_text}".')
+                
+                # 3. "Show articles about X from YYYY" queries
+                if ("articles about" in msg_lower or "articles from" in msg_lower) and "from" in msg_lower:
+                    # Extract term and year
+                    parts = msg_lower.split("from")
+                    if len(parts) >= 2:
+                        term_part = parts[0].replace("articles about", "").replace("show", "").replace("find", "").strip()
+                        year_part = parts[1].strip()[:4]  # Get first 4 digits
+                        
+                        # Try to extract year (look for 4-digit number)
+                        import re
+                        year_match = re.search(r'\b(19|20)\d{2}\b', year_part)
+                        if not year_match:
+                            year_match = re.search(r'\b(19|20)\d{2}\b', msg_lower)
+                        year = year_match.group() if year_match else year_part[:4]
+                        
+                        if term_part and year and year.isdigit() and len(year) == 4:
+                            from app.routers.timeline import timeline_hits
+                            from starlette.requests import Request as StarletteRequest
+                            from starlette.datastructures import Headers
+                            dummy_scope = {
+                                "type": "http",
+                                "method": "GET",
+                                "path": "/api/timeline/hits",
+                                "headers": Headers(request.headers).raw,
+                                "client": (request.client.host if request.client else "unknown", 0),
+                            }
+                            dummy_request = StarletteRequest(dummy_scope)
+                            dummy_request._state = request.scope.get("state", {})
+                            if request.client:
+                                dummy_request.client = request.client
+                            
+                            hits_data = await timeline_hits(dummy_request, q=term_part, year=year)
+                            hits_json = hits_data.body if hasattr(hits_data, 'body') else None
+                            if hits_json:
+                                import json
+                                hits_dict = json.loads(hits_json.decode()) if isinstance(hits_json, bytes) else hits_json
+                            else:
+                                hits_dict = {"ok": True, "results": []}
+                            
+                            if hits_dict.get("ok") and hits_dict.get("results"):
+                                results = hits_dict.get("results", [])
+                                top_titles = [r.get("title", "Untitled") for r in results[:5]]
+                                reply = f'📚 Found **{len(results)}** articles from **{year}** about "{term_part}":\n\n'
+                                for idx, title in enumerate(top_titles, 1):
+                                    reply += f'{idx}. {title}\n'
+                                if len(results) > 5:
+                                    reply += f'\n... and {len(results) - 5} more. Visit /notebook to see all articles with links.'
+                                return JSONResponse({
+                                    "ok": True,
+                                    "reply": reply,
+                                    "articles": results[:10]  # Include article data for potential rendering
+                                })
+                            else:
+                                return _ok(f'No articles found for "{term_part}" from {year}.')
+            except Exception as timeline_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Timeline query detection failed: {timeline_error}")
+                # Fall through to analysis/LLM routing
+            
+            # Check for structured analysis queries (entity extraction, summarization)
+            try:
+                msg_lower = msg.lower()
+                
+                # 1. Entity extraction queries: "extract all people mentioned in..."
+                if ("extract" in msg_lower or "find all" in msg_lower) and ("mentioned" in msg_lower or "people" in msg_lower or "entities" in msg_lower):
+                    # Try to parse: "extract all people mentioned in 1915 Gallipoli articles"
+                    # or "extract all people from 1915 Gallipoli articles"
+                    
+                    # Extract entity type
+                    entity_type = None
+                    entity_types_map = {
+                        "people": ["PERSON"],
+                        "person": ["PERSON"],
+                        "persons": ["PERSON"],
+                        "organizations": ["ORG"],
+                        "orgs": ["ORG"],
+                        "places": ["GPE", "LOC"],
+                        "locations": ["GPE", "LOC"],
+                        "events": ["EVENT"],
+                        "facilities": ["FAC"],
+                        "products": ["PRODUCT"]
+                    }
+                    for key, types in entity_types_map.items():
+                        if key in msg_lower:
+                            entity_type = types
+                            break
+                    
+                    # Extract keywords and date
+                    keywords = None
+                    date_from = None
+                    date_to = None
+                    
+                    # Look for year patterns
+                    import re
+                    year_match = re.search(r'\b(19|20)\d{2}\b', msg_lower)
+                    if year_match:
+                        year = year_match.group()
+                        date_from = year
+                        date_to = year
+                    
+                    # Look for date range
+                    range_match = re.search(r'(\d{4})\s*[-–]\s*(\d{4})', msg_lower)
+                    if range_match:
+                        date_from = range_match.group(1)
+                        date_to = range_match.group(2)
+                    
+                    # Extract keywords (remove common words, extract topic)
+                    # Try to find topic after "in" or "from"
+                    if " in " in msg_lower:
+                        parts = msg_lower.split(" in ")
+                        if len(parts) > 1:
+                            topic_part = parts[-1].split(" articles")[0].split(" from")[0].strip()
+                            if topic_part and len(topic_part) > 2:
+                                keywords = topic_part
+                    elif " from " in msg_lower:
+                        parts = msg_lower.split(" from ")
+                        if len(parts) > 1:
+                            topic_part = parts[0].split("mentioned")[-1].split("in")[-1].strip()
+                            if topic_part and len(topic_part) > 2:
+                                keywords = topic_part
+                    
+                    if entity_type or keywords or date_from:
+                        from app.routers.analysis import extract_entities_from_articles, AnalysisRequest
+                        from starlette.requests import Request as StarletteRequest
+                        from starlette.datastructures import Headers
+                        dummy_scope = {
+                            "type": "http",
+                            "method": "POST",
+                            "path": "/api/analysis/extract-entities",
+                            "headers": Headers(request.headers).raw,
+                            "client": (request.client.host if request.client else "unknown", 0),
+                        }
+                        dummy_request = StarletteRequest(dummy_scope)
+                        dummy_request._state = request.scope.get("state", {})
+                        if request.client:
+                            dummy_request.client = request.client
+                        
+                        analysis_req = AnalysisRequest(
+                            keywords=keywords,
+                            date_from=date_from,
+                            date_to=date_to,
+                            entity_types=entity_type,
+                            max_articles=100
+                        )
+                        
+                        result = await extract_entities_from_articles(dummy_request, analysis_req)
+                        result_json = result.body if hasattr(result, 'body') else None
+                        if result_json:
+                            import json
+                            result_dict = json.loads(result_json.decode()) if isinstance(result_json, bytes) else result_json
+                        else:
+                            result_dict = {"ok": True, "entities": []}
+                        
+                        if result_dict.get("ok") and result_dict.get("entities"):
+                            entities_list = result_dict.get("entities", [])
+                            entity_type_str = entity_type[0] if entity_type and len(entity_type) == 1 else "entities"
+                            reply = f"📋 Extracted **{len(entities_list)}** {entity_type_str} from **{result_dict.get('articles_processed', 0)}** articles:\n\n"
+                            for idx, ent in enumerate(entities_list[:10], 1):
+                                reply += f"{idx}. **{ent.get('text')}** ({ent.get('label')}) - mentioned {ent.get('count')} time{'s' if ent.get('count') != 1 else ''}\n"
+                            if len(entities_list) > 10:
+                                reply += f"\n... and {len(entities_list) - 10} more. Visit /notebook to see all entities."
+                            return JSONResponse({
+                                "ok": True,
+                                "reply": reply,
+                                "entities": entities_list
+                            })
+                        else:
+                            return _ok(f"No entities found matching the criteria.")
+                
+                # 2. Summarization queries: "summarise Australian coverage of WWII between 1939–1945"
+                if ("summar" in msg_lower or "summarize" in msg_lower) and ("coverage" in msg_lower or "articles" in msg_lower or "about" in msg_lower):
+                    # Extract keywords and date range
+                    keywords = None
+                    date_from = None
+                    date_to = None
+                    
+                    # Look for date range
+                    import re
+                    range_match = re.search(r'(\d{4})\s*[-–]\s*(\d{4})', msg_lower)
+                    if range_match:
+                        date_from = range_match.group(1)
+                        date_to = range_match.group(2)
+                    else:
+                        # Look for single year
+                        year_match = re.search(r'\b(19|20)\d{2}\b', msg_lower)
+                        if year_match:
+                            year = year_match.group()
+                            date_from = year
+                            date_to = year
+                    
+                    # Extract topic/keywords
+                    # Pattern: "summarise [topic] coverage of [subject]"
+                    if " coverage of " in msg_lower:
+                        parts = msg_lower.split(" coverage of ")
+                        if len(parts) > 1:
+                            topic = parts[1].split(" between")[0].split(" from")[0].split(" in")[0].strip()
+                            if topic and len(topic) > 2:
+                                keywords = topic
+                    elif " about " in msg_lower:
+                        parts = msg_lower.split(" about ")
+                        if len(parts) > 1:
+                            topic = parts[1].split(" between")[0].split(" from")[0].split(" in")[0].strip()
+                            if topic and len(topic) > 2:
+                                keywords = topic
+                    
+                    if keywords or date_from:
+                        from app.routers.analysis import summarize_articles, AnalysisRequest
+                        from starlette.requests import Request as StarletteRequest
+                        from starlette.datastructures import Headers
+                        dummy_scope = {
+                            "type": "http",
+                            "method": "POST",
+                            "path": "/api/analysis/summarize",
+                            "headers": Headers(request.headers).raw,
+                            "client": (request.client.host if request.client else "unknown", 0),
+                        }
+                        dummy_request = StarletteRequest(dummy_scope)
+                        dummy_request._state = request.scope.get("state", {})
+                        if request.client:
+                            dummy_request.client = request.client
+                        
+                        analysis_req = AnalysisRequest(
+                            keywords=keywords,
+                            date_from=date_from,
+                            date_to=date_to,
+                            max_articles=100,
+                            use_llm=True
+                        )
+                        
+                        result = await summarize_articles(dummy_request, analysis_req)
+                        result_json = result.body if hasattr(result, 'body') else None
+                        if result_json:
+                            import json
+                            result_dict = json.loads(result_json.decode()) if isinstance(result_json, bytes) else result_json
+                        else:
+                            result_dict = {"ok": True, "summary": ""}
+                        
+                        if result_dict.get("ok") and result_dict.get("summary"):
+                            summary = result_dict.get("summary", "")
+                            bullets = result_dict.get("bullets", [])
+                            article_count = result_dict.get("articles_processed", 0)
+                            reply = f"📝 Summary of **{article_count}** articles"
+                            if keywords:
+                                reply += f" about '{keywords}'"
+                            if date_from and date_to:
+                                reply += f" from {date_from}–{date_to}"
+                            reply += ":\n\n"
+                            if bullets:
+                                reply += "\n".join(f"• {b}" for b in bullets[:10])
+                            else:
+                                reply += summary[:1000]
+                            if len(summary) > 1000:
+                                reply += "..."
+                            return JSONResponse({
+                                "ok": True,
+                                "reply": reply,
+                                "summary": summary,
+                                "bullets": bullets
+                            })
+                        else:
+                            return _ok(f"No articles found to summarize matching the criteria.")
+            except Exception as analysis_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Analysis query detection failed: {analysis_error}")
+                # Fall through to LLM routing
+            
             # Non-slash command - handle with LLM routing
             try:
                 # Get research context from SQLite (persistent, pinned-first)

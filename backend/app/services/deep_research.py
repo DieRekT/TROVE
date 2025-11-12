@@ -23,7 +23,16 @@ from .web_search import search_web
 
 
 _cache = TTLCache(ttl_sec=300)
+
 SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+TOPIC_MINE = re.compile(r'\b(mine|mining|mineral|lease|ilmenite|rutile|zircon|sand|sands|beach|placer|dredg)\b', re.I)
+TOPIC_GEO = re.compile(r'\b(Iluka|Yamba|Clarence River|Angourie|Woody Head|Shark Bay)\b', re.I)
+
+def _is_on_topic(title: str, snippet: str, text: str) -> bool:
+    blob = " ".join([title or "", snippet or "", text or ""])
+    return bool(TOPIC_MINE.search(blob)) and bool(TOPIC_GEO.search(blob))
+
 
 
 def _short(s: str, n: int = 220) -> str:
@@ -61,6 +70,22 @@ async def run_deep_research(req: DeepResearchRequest) -> DeepResearchResponse:
     terms = _terms(req.query)
     sources: List[SourceItem] = []
     raw_trove_count = 0
+    dropped = 0
+    
+    # Calculate how many pages to fetch based on depth
+    # Standard: 2 pages (40 results), Deep: 5 pages (100 results), Brief: 1 page
+    pages_to_fetch = {
+        "brief": 1,
+        "standard": 2,
+        "deep": 5
+    }.get(req.depth or "standard", 2)
+    
+    # Increase max_sources for deep searches
+    effective_max = req.max_sources
+    if req.depth == "deep":
+        effective_max = max(req.max_sources, 50)  # At least 50 for deep
+    elif req.depth == "standard":
+        effective_max = max(req.max_sources, 30)  # At least 30 for standard
     
     # Stage B: Evidence retrieval (Trove)
     try:
@@ -68,32 +93,56 @@ async def run_deep_research(req: DeepResearchRequest) -> DeepResearchResponse:
         # Infer state from query for better filtering
         inferred_state = infer_state_from_query(req.query)
         
-        # Try with year filters first, but if no results, try without year filters
-        payload = await trove.search(
-            q=req.query,
-            n=req.max_sources,
-            year_from=req.years_from,
-            year_to=req.years_to,
-            reclevel="brief",  # Changed from "full" to avoid 400 errors with Trove API v3
-            include="",  # Removed articleText,links to avoid 400 errors
-            state=inferred_state  # Add state filter when inferred
-        )
-        raw = TroveClient.extract_hits(payload)
+        # Fetch multiple pages for deeper search
+        raw = []
+        page_size = 20  # Trove API max per page
+        for page in range(pages_to_fetch):
+            offset = page * page_size
+            try:
+                payload = await trove.search(
+                    q=req.query,
+                    n=page_size,
+                    offset=offset,
+                    year_from=req.years_from if page == 0 else None,  # Only filter on first page
+                    year_to=req.years_to if page == 0 else None,
+                    reclevel="brief",
+                    include="",
+                    state=inferred_state
+                )
+                page_results = TroveClient.extract_hits(payload)
+                raw.extend(page_results)
+                if len(page_results) < page_size:
+                    break  # No more results
+            except Exception as e:
+                logger.warning(f"Failed to fetch page {page + 1}: {e}")
+                break
+        
         raw_trove_count = len(raw)
         
         # If no results with year filter, try without year filter (year filter might be too restrictive)
         if raw_trove_count == 0 and (req.years_from or req.years_to):
             logger.info(f"No results with year filter {req.years_from}-{req.years_to}, trying without year filter")
-            payload = await trove.search(
-                q=req.query,
-                n=req.max_sources,
-                year_from=None,  # Remove year filter
-                year_to=None,
-                reclevel="brief",
-                include="",
-                state=inferred_state
-            )
-            raw = TroveClient.extract_hits(payload)
+            raw = []
+            for page in range(pages_to_fetch):
+                offset = page * page_size
+                try:
+                    payload = await trove.search(
+                        q=req.query,
+                        n=page_size,
+                        offset=offset,
+                        year_from=None,
+                        year_to=None,
+                        reclevel="brief",
+                        include="",
+                        state=inferred_state
+                    )
+                    page_results = TroveClient.extract_hits(payload)
+                    raw.extend(page_results)
+                    if len(page_results) < page_size:
+                        break
+                except Exception as e:
+                    logger.warning(f"Failed to fetch page {page + 1}: {e}")
+                    break
             raw_trove_count = len(raw)
 
         for rec in raw:
@@ -126,6 +175,12 @@ async def run_deep_research(req: DeepResearchRequest) -> DeepResearchResponse:
             dp = date_proximity(year, req.years_from, req.years_to)
             nswb = nsw_bonus_for_text(txt)
             rel = blend(bm25_norm, tb, dp, nswb)
+            
+            # Apply topic guard - only keep mining-related sources with location match
+            on_topic = _is_on_topic(title, rec.get('snippet') or '', full)
+            if not on_topic:
+                dropped += 1
+                continue
             
             sources.append(
                 SourceItem(
@@ -216,9 +271,12 @@ async def run_deep_research(req: DeepResearchRequest) -> DeepResearchResponse:
             filtered.append(s)
         sources = filtered
     
-    sources_sorted = sorted(sources, key=lambda s: s.relevance, reverse=True)[
-        : req.max_sources
-    ]
+    # Use effective_max if defined, otherwise req.max_sources
+    try:
+        max_sources_limit = effective_max
+    except NameError:
+        max_sources_limit = req.max_sources
+    sources_sorted = sorted(sources, key=lambda s: s.relevance, reverse=True)[:max_sources_limit]
 
     # Stage D: LLM synthesis (OpenAI Responses + Structured Outputs)
     try:
@@ -315,6 +373,7 @@ async def run_deep_research(req: DeepResearchRequest) -> DeepResearchResponse:
         ],
         stats={
             "retrieved": raw_trove_count + raw_web_count,
+            "dropped_offtopic": dropped,
             "used": len(sources_sorted),
         },
     )
@@ -354,6 +413,7 @@ async def run_deep_research_stream(
         )
         raw = TroveClient.extract_hits(payload)
         raw_trove_count = len(raw)
+        dropped = 0
         
         yield {"type": "progress", "stage": "found", "message": f"✅ Found {raw_trove_count} sources", "progress": 30, "count": raw_trove_count}
 
@@ -462,9 +522,12 @@ async def run_deep_research_stream(
             filtered.append(s)
         sources = filtered
     
-    sources_sorted = sorted(sources, key=lambda s: s.relevance, reverse=True)[
-        : req.max_sources
-    ]
+    # Use effective_max if defined, otherwise req.max_sources
+    try:
+        max_sources_limit = effective_max
+    except NameError:
+        max_sources_limit = req.max_sources
+    sources_sorted = sorted(sources, key=lambda s: s.relevance, reverse=True)[:max_sources_limit]
 
     # Stage D: LLM synthesis
     yield {"type": "progress", "stage": "analyzing", "message": "🧠 Analyzing content...", "progress": 60}
@@ -564,6 +627,7 @@ async def run_deep_research_stream(
         ],
         stats={
             "retrieved": raw_trove_count + raw_web_count,
+            "dropped_offtopic": dropped,
             "used": len(sources_sorted),
         },
     )

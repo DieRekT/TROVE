@@ -120,6 +120,15 @@ async function startDeepResearch() {
     
     currentReport = report;
     
+    // Show off-topic drop badge if backend set stats
+    if (report?.stats?.dropped_offtopic > 0) {
+      const progressStatus = document.getElementById("progressStatus");
+      if (progressStatus) {
+        progressStatus.innerHTML = `✅ Complete (filtered ${report.stats.dropped_offtopic} off-topic hits)`;
+        progressStatus.style.color = "#b45309";
+      }
+    }
+    
     // Render professional report
     if (reportContent) {
       reportContent.innerHTML = renderProfessionalReport(report);

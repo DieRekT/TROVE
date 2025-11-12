@@ -355,6 +355,17 @@ async function sendMessage(msg) {
     const text = j.say || j.reply || j.error || 'Done!';
     const citations = j.citations || null;
     addMessage(text, true, citations);
+    
+    // Handle timeline responses
+    if (j.timeline) {
+      renderTimelineInChat(j.timeline);
+    }
+    
+    // Handle article lists
+    if (j.articles && Array.isArray(j.articles) && j.articles.length > 0) {
+      renderArticleList(j.articles);
+    }
+    
     if (j.file) {
       const a = document.createElement('a');
       a.href = j.file; a.className='file-link'; a.textContent = `📄 ${j.file}`;
@@ -603,6 +614,165 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+let chatTimelineChart = null;
+
+/**
+ * Render timeline chart in chat message
+ */
+function renderTimelineInChat(timelineData) {
+  if (!timelineData || !timelineData.ok) return;
+  
+  const lastMessage = M.lastElementChild;
+  if (!lastMessage) return;
+  
+  // Create chart container
+  const chartContainer = document.createElement('div');
+  chartContainer.className = 'chat-timeline-chart';
+  chartContainer.style.marginTop = '1rem';
+  chartContainer.style.padding = '1rem';
+  chartContainer.style.background = 'var(--bg-secondary, #1a1d24)';
+  chartContainer.style.borderRadius = '8px';
+  
+  const canvas = document.createElement('canvas');
+  canvas.id = 'chatTimelineChart-' + Date.now();
+  chartContainer.appendChild(canvas);
+  
+  lastMessage.querySelector('.message-content').appendChild(chartContainer);
+  
+  // Load Chart.js if not already loaded
+  if (typeof Chart === 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+    script.onload = () => renderChart();
+    document.head.appendChild(script);
+  } else {
+    renderChart();
+  }
+  
+  function renderChart() {
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy existing chart if any
+    if (chatTimelineChart) {
+      chatTimelineChart.destroy();
+    }
+    
+    // Determine chart type and data
+    let labels, datasets;
+    
+    if (timelineData.datasets && timelineData.datasets.length > 0) {
+      // Comparison chart (multiple entities)
+      labels = timelineData.years || [];
+      datasets = timelineData.datasets;
+      chartType = 'line';
+    } else if (timelineData.timeline && timelineData.timeline.length > 0) {
+      // Single entity timeline
+      labels = timelineData.timeline.map(p => p.year);
+      datasets = [{
+        label: timelineData.term || 'Mentions',
+        data: timelineData.timeline.map(p => p.count),
+        backgroundColor: 'rgba(102, 153, 204, 0.6)',
+        borderColor: 'rgba(102, 153, 204, 1)',
+        borderWidth: 1
+      }];
+      chartType = 'bar';
+    } else {
+      return; // No data to render
+    }
+    
+    chatTimelineChart = new Chart(ctx, {
+      type: chartType,
+      data: {
+        labels: labels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: datasets.length > 1
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              stepSize: 1
+            }
+          }
+        }
+      }
+    });
+    
+    // Set chart height
+    canvas.style.maxHeight = '300px';
+    canvas.parentElement.style.height = '300px';
+  }
+}
+
+/**
+ * Render article list in chat message
+ */
+function renderArticleList(articles) {
+  if (!articles || articles.length === 0) return;
+  
+  const lastMessage = M.lastElementChild;
+  if (!lastMessage) return;
+  
+  const articleList = document.createElement('div');
+  articleList.className = 'chat-article-list';
+  articleList.style.marginTop = '1rem';
+  articleList.style.display = 'flex';
+  articleList.style.flexDirection = 'column';
+  articleList.style.gap = '0.5rem';
+  
+  articles.forEach(article => {
+    const articleDiv = document.createElement('div');
+    articleDiv.className = 'chat-article-item';
+    articleDiv.style.padding = '0.75rem';
+    articleDiv.style.background = 'var(--bg, #0f1117)';
+    articleDiv.style.border = '1px solid var(--border, #222831)';
+    articleDiv.style.borderRadius = '6px';
+    articleDiv.style.borderLeft = '3px solid var(--brand, #6699cc)';
+    
+    const title = document.createElement('h4');
+    title.style.margin = '0 0 0.25rem 0';
+    title.style.fontSize = '0.95rem';
+    title.textContent = escapeHtml(article.title || 'Untitled');
+    articleDiv.appendChild(title);
+    
+    if (article.date || article.source) {
+      const meta = document.createElement('p');
+      meta.style.margin = '0.25rem 0';
+      meta.style.fontSize = '0.875rem';
+      meta.style.color = 'var(--fg-secondary, #cbd5e0)';
+      meta.textContent = [article.date, article.source].filter(Boolean).join(' • ');
+      articleDiv.appendChild(meta);
+    }
+    
+    if (article.trove_id) {
+      const link = document.createElement('a');
+      link.href = `/reader?id=${escapeHtml(article.trove_id)}`;
+      link.target = '_blank';
+      link.textContent = '🔍 Open Article';
+      link.style.display = 'inline-block';
+      link.style.marginTop = '0.5rem';
+      link.style.padding = '0.5rem 1rem';
+      link.style.background = 'var(--brand, #6699cc)';
+      link.style.color = 'white';
+      link.style.textDecoration = 'none';
+      link.style.borderRadius = '4px';
+      link.style.fontSize = '0.875rem';
+      articleDiv.appendChild(link);
+    }
+    
+    articleList.appendChild(articleDiv);
+  });
+  
+  lastMessage.querySelector('.message-content').appendChild(articleList);
 }
 
 // Load timeline on page load if editor is visible (won't be, but just in case)

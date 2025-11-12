@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Research Notebook - Troveing{% endblock %}
+{% block content %}
+<div class="notebook-layout">
+  <header class="notebook-header">
+    <h1>📓 Research Notebook</h1>
+    <p class="notebook-subtitle">Explore entities, timelines, and research insights</p>
+  </header>
+
+  <main class="notebook-main">
+    <!-- Main content area -->
+    <section class="notebook-content" id="notebookContent">
+      <div class="welcome-message">
+        <h2>Welcome to Research Notebook</h2>
+        <p>This notebook helps you explore entities and timelines from your tracked articles.</p>
+        <p>Start by viewing articles in search or reader, then come back here to see extracted entities and timelines.</p>
+      </div>
+    </section>
+
+    <!-- Entity Sidebar -->
+    <aside id="entitySidebar" class="sidebar">
+      <h2>🔎 Entities</h2>
+      <p class="sidebar-hint">Click entities to select, then compare multiple</p>
+      <button id="compareBtn" class="btn-compare" style="margin-bottom: 1rem; width: 100%; padding: 0.75rem; background: var(--brand, #6699cc); color: white; border: none; border-radius: var(--radius-sm, 6px); cursor: pointer; font-weight: 500;">🔁 Compare Selected</button>
+      <ul id="entityList" class="entity-list">
+        <li class="loading">Loading entities...</li>
+      </ul>
+    </aside>
+  </main>
+
+  <!-- Timeline Section -->
+  <section id="timelineSection" class="timeline-panel hidden">
+    <div class="timeline-header">
+      <h2>📈 Mentions Timeline</h2>
+      <button class="btn-close" onclick="hideTimeline()">✕</button>
+    </div>
+    <div class="timeline-chart-container">
+      <canvas id="timelineChart"></canvas>
+    </div>
+    <div id="timelineInfo" class="timeline-info"></div>
+  </section>
+</div>
+
+<style>
+.notebook-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 120px);
+  padding: 1rem;
+}
+
+.notebook-header {
+  margin-bottom: 2rem;
+}
+
+.notebook-header h1 {
+  font-size: 2rem;
+  margin: 0 0 0.5rem 0;
+  color: var(--fg, #e7eaee);
+}
+
+.notebook-subtitle {
+  color: var(--fg-secondary, #cbd5e0);
+  margin: 0;
+}
+
+.notebook-main {
+  display: flex;
+  gap: 1.5rem;
+  flex: 1;
+}
+
+.notebook-content {
+  flex: 1;
+  padding: 1.5rem;
+  background: var(--bg-secondary, #1a1d24);
+  border-radius: var(--radius-md, 10px);
+}
+
+.welcome-message {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--fg-secondary, #cbd5e0);
+}
+
+.sidebar {
+  width: 300px;
+  padding: 1.5rem;
+  background: var(--bg-secondary, #1a1d24);
+  border-radius: var(--radius-md, 10px);
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  border-left: 1px solid var(--border, #222831);
+}
+
+.sidebar h2 {
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem 0;
+  color: var(--fg, #e7eaee);
+}
+
+.sidebar-hint {
+  font-size: 0.875rem;
+  color: var(--fg-secondary, #cbd5e0);
+  margin: 0 0 1rem 0;
+}
+
+.entity-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.entity-list li {
+  margin: 0.5rem 0;
+}
+
+.entity-list li.loading {
+  color: var(--fg-secondary, #cbd5e0);
+  font-style: italic;
+  padding: 0.5rem;
+}
+
+.entity-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg, #0f1117);
+  border: 1px solid var(--border, #222831);
+  padding: 0.75rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--fg, #e7eaee);
+  transition: all 0.2s;
+  font-size: 0.9rem;
+}
+
+.entity-btn:hover {
+  background: var(--bg-hover, #1a1d24);
+  border-color: var(--brand, #6699cc);
+  transform: translateX(4px);
+}
+
+.entity-btn:active {
+  transform: translateX(2px);
+}
+
+.entity-btn.selected {
+  background: var(--brand, #6699cc);
+  border-color: var(--brand, #6699cc);
+  color: white;
+  font-weight: 600;
+}
+
+.btn-compare {
+  transition: all 0.2s;
+}
+
+.btn-compare:hover {
+  background: var(--brand-hover, #5588bb) !important;
+  transform: translateY(-1px);
+}
+
+.btn-compare:active {
+  transform: translateY(0);
+}
+
+.article-results-list {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.result-article {
+  padding: 1rem;
+  background: var(--bg, #0f1117);
+  border: 1px solid var(--border, #222831);
+  border-radius: var(--radius-sm, 6px);
+  border-left: 3px solid var(--brand, #6699cc);
+}
+
+.result-article h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--fg, #e7eaee);
+  font-size: 1.1rem;
+}
+
+.article-meta {
+  font-size: 0.875rem;
+  color: var(--fg-secondary, #cbd5e0);
+  margin: 0.25rem 0;
+}
+
+.article-snippet {
+  color: var(--fg-secondary, #cbd5e0);
+  margin: 0.75rem 0;
+  line-height: 1.6;
+}
+
+.result-article .btn {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--brand, #6699cc);
+  color: white;
+  text-decoration: none;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.result-article .btn:hover {
+  background: var(--brand-hover, #5588bb);
+  transform: translateY(-1px);
+}
+
+.timeline-panel {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: var(--bg-secondary, #1a1d24);
+  border-radius: var(--radius-md, 10px);
+  border-top: 2px solid var(--brand, #6699cc);
+}
+
+.timeline-panel.hidden {
+  display: none;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.timeline-header h2 {
+  font-size: 1.5rem;
+  margin: 0;
+  color: var(--fg, #e7eaee);
+}
+
+.btn-close {
+  background: transparent;
+  border: 1px solid var(--border, #222831);
+  color: var(--fg-secondary, #cbd5e0);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.btn-close:hover {
+  background: var(--bg-hover, #1a1d24);
+  border-color: var(--brand, #6699cc);
+}
+
+.timeline-chart-container {
+  position: relative;
+  height: 300px;
+  margin: 1rem 0;
+}
+
+.timeline-info {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg, #0f1117);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.875rem;
+  color: var(--fg-secondary, #cbd5e0);
+}
+
+@media (max-width: 768px) {
+  .notebook-main {
+    flex-direction: column;
+  }
+  
+  .sidebar {
+    width: 100%;
+    max-height: 300px;
+  }
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ static_url(request, 'static/js/notebook-ui.js') }}" defer></script>
+{% endblock %}
+

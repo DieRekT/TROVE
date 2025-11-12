@@ -52,3 +52,9 @@ async def status_page(request: Request):
     """System status page."""
     return templates.TemplateResponse("status.html", {"request": request})
 
+
+@router.get("/notebook", response_class=HTMLResponse)
+async def notebook_page(request: Request):
+    """Research notebook page with entity extraction and timelines."""
+    return templates.TemplateResponse("notebook.html", {"request": request})
+
