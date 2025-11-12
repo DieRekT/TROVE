@@ -12,7 +12,7 @@ from .deps import get_cache, get_http_client
 from .models import NormalizedItem, SearchResponse
 from .schemas import ReadyResponse
 from .utils.csv_export import items_to_csv_bytes
-from .routers import deep_research, formatting, dashboard, batch_research, search_reader, reader_text, summarize, tunnel, qrcode, context, pages, items, text_tools, mobile_api, structured_synthesis, research, entities, timeline, analysis
+from .routers import deep_research, formatting, dashboard, batch_research, search_reader, reader_text, summarize, tunnel, qrcode, context, pages, items, text_tools, mobile_api, structured_synthesis, research, entities, timeline, analysis, seeds
 
 app = FastAPI(title="Archive Detective API", version="0.1.0")
 
@@ -108,6 +108,7 @@ app.include_router(research.router)
 app.include_router(entities.router)
 app.include_router(timeline.router)
 app.include_router(analysis.router)
+app.include_router(seeds.router)
 
 # Mount static files
 static_dir = Path(__file__).parent / "static"

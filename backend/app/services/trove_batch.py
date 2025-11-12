@@ -4,8 +4,10 @@ import asyncio
 import re
 import math
 import time
+import httpx
 from typing import Optional, List, Dict, Any, Tuple
 from .trove_client import TroveClient
+from .text_extract import html_to_text
 from ..db import get_conn, upsert_source
 
 
@@ -50,7 +52,7 @@ async def ingest_trove(
     """
     client = TroveClient()
     retrieved = stored = 0
-    next_start = None  # Token-based pagination for Trove API v3
+    next_start: Optional[int | str] = None  # Token-based pagination for Trove API v3
     
     for page in range(max_pages):
         payload = await client.search(
@@ -58,7 +60,7 @@ async def ingest_trove(
             n=page_size,
             year_from=yfrom,
             year_to=yto,
-            offset=next_start,  # Pass token instead of numeric offset
+            offset=next_start if page > 0 else None,  # First page: offset=None, subsequent: use token
             state=state
         )
         hits = client.extract_hits(payload)
@@ -69,14 +71,6 @@ async def ingest_trove(
                     conn.execute("UPDATE jobs SET progress=?, updated_at=? WHERE id=?",
                                  (min(0.99, (page)/(max_pages)), time.time(), job_id))
             break
-        
-        # Extract nextStart token for next page
-        next_start = None
-        for cat in payload.get("category", []):
-            recs = cat.get("records", {})
-            next_start = recs.get("nextStart")
-            if next_start:
-                break
         
         retrieved += len(hits)
         
@@ -94,7 +88,23 @@ async def ingest_trove(
                 title = rec.get("heading") or rec.get("title") or "Untitled"
                 url = client.article_url(rec)
                 year = client.year_from_any(rec)
-                text = ((rec.get("articleText") or "") + " " + (rec.get("snippet") or "")).strip()
+                full_text = rec.get("articleText") or rec.get("snippet") or ""
+                
+                # Fetch + extract if needed (when articleText is missing)
+                if not full_text and url:
+                    try:
+                        async with httpx.AsyncClient(timeout=15.0) as http_client:
+                            r = await http_client.get(url)
+                            r.raise_for_status()
+                            full_text = html_to_text(r.text)
+                    except Exception:
+                        pass  # Fall back to snippet if available
+                
+                # Ensure we have some text
+                if not full_text:
+                    full_text = rec.get("snippet") or ""
+                
+                text = full_text.strip()
                 
                 upsert_source(conn, sid, str(title), year, url, text, rec)
                 stored += 1
@@ -103,6 +113,18 @@ async def ingest_trove(
             if job_id:
                 conn.execute("UPDATE jobs SET progress=?, updated_at=? WHERE id=?",
                              (min(0.99, (page+1)/max_pages), time.time(), job_id))
+        
+        # Extract nextStart token for next page (after processing current page)
+        next_start = None
+        for cat in payload.get("category", []):
+            recs = cat.get("records", {})
+            next_start = recs.get("nextStart")
+            if next_start:
+                break
+        
+        # If no nextStart token, we've reached the last page
+        if not next_start:
+            break
     
     return retrieved, stored
 

@@ -19,8 +19,27 @@ def date_proximity(year: Optional[int], y_from: Optional[int], y_to: Optional[in
     return 1.0 / (1.0 + abs(year - mid) / max(1.0, (y_to - y_from)/2 or 1.0))
 
 def bm25_to_score(bm25_value: float) -> float:
-    # SQLite FTS5 bm25: smaller is better; normalize to (0,1], monotonic
-    return 1.0 / (1.0 + max(0.0, bm25_value))
+    """
+    Map SQLite FTS5 bm25() score to 0-1 relevance score.
+    
+    In FTS5, bm25() returns negative values where:
+    - More negative (lower) = higher relevance
+    - Less negative (higher) = lower relevance
+    
+    We convert to 0-1 where 1.0 = most relevant.
+    Formula: score = 1.0 - (1.0 / (1.0 + abs(bm25_value)))
+    
+    Examples:
+    - bm25=-10 (very relevant) → score ≈ 0.91
+    - bm25=-5 (relevant) → score ≈ 0.83
+    - bm25=-1 (less relevant) → score ≈ 0.5
+    """
+    # Handle non-negative bm25 (shouldn't happen in FTS5, but be defensive)
+    if bm25_value >= 0:
+        return 0.0
+    # More negative bm25 = higher relevance = higher score
+    # Use: 1.0 - (1.0 / (1.0 + abs(bm25))) so abs(bm25)=10 → 0.91, abs(bm25)=1 → 0.5
+    return 1.0 - (1.0 / (1.0 + abs(bm25_value)))
 
 def blend(bm25: float, title_boost: float, date_boost: float, nsw_bonus: float=0.0) -> float:
     # weighted sum → [0..1.7] approx; clamp 0..1
